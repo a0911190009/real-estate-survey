@@ -1,0 +1,24 @@
+# 環境變數（含 API Key，絕不上傳）
+.env
+*.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+
+# 本地資料（feedback、歷史紀錄）
+feedback.json
+general_feedback.json
+history/
+
+# 系統檔
+.DS_Store
+*.DS_Store
+
+# IDE
+.vscode/
+.idea/
