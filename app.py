@@ -7,40 +7,52 @@
 
 import os
 import json
-from flask import Flask, request, jsonify, send_from_directory
+import functools
+from flask import Flask, request, jsonify, send_from_directory, render_template_string, session, redirect
+from itsdangerous import URLSafeTimedSerializer, SignatureExpired, BadSignature
 
 try:
     from dotenv import load_dotenv
     _app_dir = os.path.dirname(os.path.abspath(__file__))
     _local_env = os.path.join(_app_dir, ".env")
-    # 優先：ENV_FILE 指定路徑
+    _central_env = os.path.join(_app_dir, "..", ".env")
+    # 優先：ENV_FILE 環境變數指定路徑
     _env_file = os.environ.get("ENV_FILE")
     if _env_file and os.path.isfile(_env_file):
         load_dotenv(_env_file, override=False)
-    # 其次：本專案目錄的 .env（你放的 .env 會被讀到）
+    # 其次：本專案目錄的 .env（本地覆蓋）
     elif os.path.isfile(_local_env):
         load_dotenv(_local_env, override=False)
-    # 最後：若尚未有 Gemini key，再試外部路徑
-    elif not (os.environ.get("GOOGLE_API_KEY") or os.environ.get("GOOGLE_AI_STUDIO_API_KEY")):
-        _external = "/Users/bagel/real_estate_app/.env"
-        if os.path.isfile(_external):
-            load_dotenv(_external, override=False)
+    # 再次：上層 Projects/.env（集中管理）
+    if os.path.isfile(_central_env):
+        load_dotenv(_central_env, override=False)
 except Exception:
     pass
 
 from survey_v37 import run_survey, resolve_address, RADIUS_DEFAULT
 
 app = Flask(__name__, static_folder="static", static_url_path="")
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "dev-fallback-secret-key-change-me")
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+app.config["SESSION_COOKIE_SECURE"] = not os.environ.get("FLASK_DEBUG")
+
+GOOGLE_OAUTH_CLIENT_ID = os.environ.get("GOOGLE_OAUTH_CLIENT_ID", "")
+ADMIN_EMAILS = [e.strip() for e in (os.environ.get("ADMIN_EMAILS") or "").split(",") if e.strip()]
+FREE_SEARCH_LIMIT = int(os.environ.get("FREE_SEARCH_LIMIT", "3"))
+PORTAL_URL = (os.environ.get("PORTAL_URL") or "").strip()
+SERVICE_API_KEY = (os.environ.get("SERVICE_API_KEY") or "").strip()
+TOKEN_SERIALIZER = URLSafeTimedSerializer(app.secret_key)
+TOKEN_MAX_AGE = 60
 
 
 @app.route("/api/config")
 def api_config():
-    """回傳前端所需的公開設定（目前只有 Maps API Key 供地圖圖層使用）"""
+    """回傳前端所需的公開設定"""
     from survey_v37 import _get_all_api_keys, _find_working_key, _working_key
     key = _working_key
     if not key:
         key = _find_working_key()
-    return jsonify({"maps_api_key": key or ""})
+    return jsonify({"maps_api_key": key or "", "oauth_client_id": GOOGLE_OAUTH_CLIENT_ID, "portal_url": PORTAL_URL})
 
 
 @app.route("/api/debug")
@@ -93,6 +105,8 @@ def _gemini_summary(address_display: str, lat: float, lng: float, radius_m: int)
 
 
 _APP_DIR = os.path.dirname(os.path.abspath(__file__))
+USERS_DIR = os.path.join(_APP_DIR, "users")
+os.makedirs(USERS_DIR, exist_ok=True)
 GCS_BUCKET = os.environ.get("GCS_BUCKET", "")
 _gcs_client = None
 _gcs_bucket = None
@@ -257,6 +271,354 @@ def _regenerate_summary(result, address_display, radius_m):
     result["summary"] = summary
 
 
+# ── Auth helpers ──
+
+def _load_user(email):
+    safe = email.replace("@", "_at_").replace(".", "_")
+    if GCS_BUCKET:
+        raw = _gcs_read(f"users/{safe}.json")
+        if raw:
+            try: return json.loads(raw)
+            except Exception: return None
+        return None
+    fpath = os.path.join(USERS_DIR, f"{safe}.json")
+    if os.path.isfile(fpath):
+        try:
+            with open(fpath, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return None
+    return None
+
+
+def _save_user(user_data):
+    email = user_data.get("email", "")
+    safe = email.replace("@", "_at_").replace(".", "_")
+    data_str = json.dumps(user_data, ensure_ascii=False, indent=2)
+    if GCS_BUCKET:
+        _gcs_write(f"users/{safe}.json", data_str)
+    else:
+        fpath = os.path.join(USERS_DIR, f"{safe}.json")
+        with open(fpath, "w", encoding="utf-8") as f:
+            f.write(data_str)
+
+
+def _is_admin(email):
+    return email in ADMIN_EMAILS
+
+
+def _get_current_user():
+    email = session.get("user_email")
+    if not email:
+        return None
+    return _load_user(email)
+
+
+SERVICE_API_KEY = os.environ.get("SERVICE_API_KEY", "")
+
+
+def login_required(f):
+    @functools.wraps(f)
+    def decorated(*args, **kwargs):
+        if SERVICE_API_KEY:
+            auth_header = request.headers.get("Authorization", "")
+            if auth_header == f"Bearer {SERVICE_API_KEY}":
+                return f(*args, **kwargs)
+        if not session.get("user_email"):
+            return jsonify({"error": "未登入", "login_required": True}), 401
+        return f(*args, **kwargs)
+    return decorated
+
+
+def _portal_check_and_deduct(email, tool_id="survey"):
+    """呼叫 Portal 檢查並扣一次使用。若未設定 PORTAL_URL 或 SERVICE_API_KEY 則回傳 (True, None) 表示略過（由本地邏輯處理）。"""
+    if not PORTAL_URL or not SERVICE_API_KEY:
+        return True, None
+    try:
+        import requests as _req
+        r = _req.post(
+            f"{PORTAL_URL.rstrip('/')}/api/usage/check-and-deduct",
+            json={"email": email, "tool_id": tool_id},
+            headers={"X-Service-Key": SERVICE_API_KEY},
+            timeout=10,
+        )
+        data = r.json() if r.headers.get("content-type", "").startswith("application/json") else {}
+        if r.status_code == 200 and data.get("ok"):
+            return True, data
+        return False, data.get("reason", "用量檢查失敗")
+    except Exception as e:
+        return False, str(e)
+
+
+def _portal_get_usage(email):
+    """向 Portal 取得目前用量與餘額。若未設定則回傳 None。"""
+    if not PORTAL_URL or not SERVICE_API_KEY:
+        return None
+    try:
+        import requests as _req
+        r = _req.get(
+            f"{PORTAL_URL.rstrip('/')}/api/usage",
+            params={"email": email},
+            headers={"X-Service-Key": SERVICE_API_KEY},
+            timeout=5,
+        )
+        if r.status_code != 200:
+            return None
+        return r.json()
+    except Exception:
+        return None
+
+
+def admin_required(f):
+    @functools.wraps(f)
+    def decorated(*args, **kwargs):
+        email = session.get("user_email")
+        if not email:
+            return jsonify({"error": "未登入", "login_required": True}), 401
+        if not _is_admin(email):
+            return jsonify({"error": "無管理權限"}), 403
+        return f(*args, **kwargs)
+    return decorated
+
+
+# ── Auth routes ──
+
+@app.route("/auth/google", methods=["POST"])
+def auth_google():
+    from google.oauth2 import id_token
+    from google.auth.transport import requests as google_requests
+
+    data = request.get_json() or {}
+    token = data.get("credential", "")
+    if not token:
+        return jsonify({"error": "缺少 credential"}), 400
+    if not GOOGLE_OAUTH_CLIENT_ID:
+        return jsonify({"error": "伺服器未設定 OAuth Client ID"}), 500
+    try:
+        idinfo = id_token.verify_oauth2_token(token, google_requests.Request(), GOOGLE_OAUTH_CLIENT_ID)
+    except Exception as e:
+        return jsonify({"error": f"驗證失敗：{e}"}), 401
+
+    email = idinfo.get("email", "")
+    from datetime import datetime
+    user = _load_user(email) or {
+        "email": email,
+        "name": idinfo.get("name", ""),
+        "picture": idinfo.get("picture", ""),
+        "first_login": datetime.now().isoformat(),
+        "plan": "free",
+        "usage": {"search_count": 0},
+    }
+    user["name"] = idinfo.get("name", user.get("name", ""))
+    user["picture"] = idinfo.get("picture", user.get("picture", ""))
+    user["last_login"] = datetime.now().isoformat()
+    _save_user(user)
+
+    session["user_email"] = email
+    session["user_name"] = user["name"]
+    session["user_picture"] = user.get("picture", "")
+
+    is_admin = _is_admin(email)
+    usage = user.get("usage", {})
+    limit = None if is_admin else FREE_SEARCH_LIMIT
+
+    return jsonify({
+        "ok": True,
+        "email": email,
+        "name": user["name"],
+        "picture": user.get("picture", ""),
+        "is_admin": is_admin,
+        "plan": user.get("plan", "free"),
+        "search_count": usage.get("search_count", 0),
+        "search_limit": limit,
+    })
+
+
+@app.route("/auth/me")
+def auth_me():
+    email = session.get("user_email")
+    if not email:
+        return jsonify({"logged_in": False})
+    user = _load_user(email)
+    if not user:
+        session.clear()
+        return jsonify({"logged_in": False})
+    is_admin = _is_admin(email)
+    portal_usage = _portal_get_usage(email)
+    usage = (portal_usage.get("usage", {}) if portal_usage else None) or user.get("usage", {})
+    return jsonify({
+        "logged_in": True,
+        "email": email,
+        "name": user.get("name", ""),
+        "picture": user.get("picture", ""),
+        "is_admin": is_admin,
+        "plan": user.get("plan", "free"),
+        "search_count": usage.get("search_count", 0),
+        "search_limit": None if is_admin else FREE_SEARCH_LIMIT,
+    })
+
+
+@app.route("/auth/logout", methods=["POST"])
+def auth_logout():
+    session.clear()
+    if PORTAL_URL:
+        return jsonify({"ok": True, "redirect": PORTAL_URL})
+    return jsonify({"ok": True})
+
+
+@app.route("/auth/portal-login")
+def auth_portal_login():
+    """Accept a signed token from Portal and create a local session."""
+    token = request.args.get("token", "")
+    if not token:
+        return redirect(PORTAL_URL or "/")
+    try:
+        payload = TOKEN_SERIALIZER.loads(token, salt="portal-sso", max_age=TOKEN_MAX_AGE)
+    except (SignatureExpired, BadSignature):
+        return redirect(PORTAL_URL or "/")
+
+    email = payload.get("email", "")
+    if not email:
+        return redirect(PORTAL_URL or "/")
+
+    from datetime import datetime
+    user = _load_user(email) or {
+        "email": email, "name": payload.get("name", ""), "picture": payload.get("picture", ""),
+        "first_login": datetime.now().isoformat(), "plan": "free",
+        "usage": {"search_count": 0},
+    }
+    user["last_login"] = datetime.now().isoformat()
+    _save_user(user)
+
+    session["user_email"] = email
+    session["user_name"] = payload.get("name", "")
+    session["user_picture"] = payload.get("picture", "")
+
+    next_url = request.args.get("next", "/")
+    if not next_url.startswith("/"):
+        next_url = "/"
+    return redirect(next_url)
+
+
+FEEDBACK_ADMIN_PAGE = """
+<!doctype html>
+<html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>反饋管理 - Survey</title>
+<style>
+  :root{--bg:#f5f5f7;--card:#fff;--border:#d2d2d7;--accent:#007aff;--danger:#ff3b30;--muted:#8e8e93;--text:#1d1d1f}
+  *{box-sizing:border-box}
+  body{font-family:-apple-system,sans-serif;background:var(--bg);margin:0;padding:16px;color:var(--text)}
+  .container{max-width:800px;margin:0 auto}
+  h1{font-size:20px;text-align:center;margin-bottom:8px}
+  .tabs{display:flex;gap:8px;margin-bottom:16px;justify-content:center}
+  .tab{padding:8px 20px;border-radius:10px;border:1px solid var(--border);background:var(--card);cursor:pointer;font-size:14px;font-weight:600}
+  .tab.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .panel{display:none}.panel.active{display:block}
+  .card{background:var(--card);border-radius:12px;padding:16px;margin-bottom:12px;box-shadow:0 1px 6px rgba(0,0,0,.05);border:1px solid var(--border)}
+  .card-title{font-weight:700;font-size:14px;margin-bottom:6px}
+  .tag{display:inline-block;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:600;margin-right:4px}
+  .tag-invalid{background:#fee;color:var(--danger)}.tag-notable{background:#e8f5e9;color:#2e7d32}
+  .tag-nuisance{background:#fff3e0;color:#e65100}.tag-normal{background:#f5f5f5;color:#666}
+  .tag-commented{background:#e3f2fd;color:#1565c0}
+  .meta{font-size:12px;color:var(--muted);margin-top:4px}
+  .comment{background:#f9f9fb;border-radius:8px;padding:8px 10px;margin-top:6px;font-size:13px;border-left:3px solid var(--accent)}
+  .severity{font-size:13px;margin-top:4px}
+  .empty{text-align:center;color:var(--muted);padding:40px;font-size:14px}
+  .stats{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px;justify-content:center}
+  .stat{background:var(--card);border-radius:10px;padding:10px 16px;border:1px solid var(--border);text-align:center;min-width:80px}
+  .stat-num{font-size:22px;font-weight:700;color:var(--accent)}.stat-label{font-size:11px;color:var(--muted)}
+  .back{display:inline-block;margin-bottom:12px;color:var(--accent);text-decoration:none;font-size:13px}
+</style></head><body>
+<div class="container">
+  <a href="/" class="back">← 回到調查工具</a>
+  <h1>📊 使用者反饋管理</h1>
+  <div id="stats" class="stats"></div>
+  <div class="tabs">
+    <div class="tab active" onclick="switchTab('facility')">設施反饋</div>
+    <div class="tab" onclick="switchTab('general')">通用意見</div>
+  </div>
+  <div id="facility-panel" class="panel active"></div>
+  <div id="general-panel" class="panel"></div>
+</div>
+<script>
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach((t,i) => t.classList.toggle('active', (name==='facility'?i===0:i===1)));
+  document.getElementById('facility-panel').classList.toggle('active', name==='facility');
+  document.getElementById('general-panel').classList.toggle('active', name==='general');
+}
+
+const ACTION_LABELS = {invalid:'標記無效',notable:'標為重要',normal:'改為普通',nuisance:'標為嫌惡',commented:'已留言'};
+const ACTION_TAGS = {invalid:'tag-invalid',notable:'tag-notable',normal:'tag-normal',nuisance:'tag-nuisance',commented:'tag-commented'};
+const SEV_EMOJI = {high:'🔴 高',medium:'🟡 中',low:'🟢 低'};
+
+async function loadAll() {
+  const [fbRes, gfRes] = await Promise.all([fetch('/api/feedback'), fetch('/api/general-feedback')]);
+  const fb = await fbRes.json();
+  const gf = await gfRes.json();
+  renderStats(fb, gf);
+  renderFacility(fb);
+  renderGeneral(gf);
+}
+
+function renderStats(fb, gf) {
+  const entries = Object.values(fb);
+  const counts = {invalid:0, notable:0, nuisance:0, normal:0, commented:0};
+  entries.forEach(e => { if(e.action && counts[e.action]!==undefined) counts[e.action]++; });
+  const commented = entries.filter(e => e.comment).length;
+  document.getElementById('stats').innerHTML =
+    `<div class="stat"><div class="stat-num">${entries.length}</div><div class="stat-label">設施反饋</div></div>`+
+    `<div class="stat"><div class="stat-num">${counts.invalid}</div><div class="stat-label">無效</div></div>`+
+    `<div class="stat"><div class="stat-num">${counts.notable}</div><div class="stat-label">重要</div></div>`+
+    `<div class="stat"><div class="stat-num">${counts.nuisance}</div><div class="stat-label">嫌惡</div></div>`+
+    `<div class="stat"><div class="stat-num">${commented}</div><div class="stat-label">有留言</div></div>`+
+    `<div class="stat"><div class="stat-num">${gf.length}</div><div class="stat-label">通用意見</div></div>`;
+}
+
+function renderFacility(fb) {
+  const panel = document.getElementById('facility-panel');
+  const entries = Object.entries(fb);
+  if (!entries.length) { panel.innerHTML = '<div class="empty">尚無設施反饋</div>'; return; }
+  entries.sort((a,b) => (b[1].updated_at||'').localeCompare(a[1].updated_at||''));
+  panel.innerHTML = entries.map(([pid, e]) => {
+    const action = e.action || 'commented';
+    const tagCls = ACTION_TAGS[action] || 'tag-commented';
+    let html = `<div class="card">`;
+    html += `<div class="card-title">${e.name || pid} <span class="tag ${tagCls}">${ACTION_LABELS[action]||action}</span></div>`;
+    if (e.address) {
+      html += `<div class="meta" style="margin-bottom:2px;">📍 查詢地址：<b>${e.address}</b>`;
+      if (e.history_id) html += ` <a href="/view/${encodeURIComponent(e.history_id)}" target="_blank" style="color:var(--accent);text-decoration:none;">🔗 查看報告</a>`;
+      html += `</div>`;
+    } else if (e.history_id) {
+      html += `<div class="meta"><a href="/view/${encodeURIComponent(e.history_id)}" target="_blank" style="color:var(--accent);text-decoration:none;">🔗 查看當時報告</a></div>`;
+    }
+    if (e.updated_at) html += `<div class="meta">更新：${new Date(e.updated_at).toLocaleString('zh-TW')}</div>`;
+    if (e.severity_override) html += `<div class="severity">嚴重度調整：${SEV_EMOJI[e.severity_override]||e.severity_override}</div>`;
+    if (e.comment) html += `<div class="comment">💬 ${e.comment}</div>`;
+    html += `<div class="meta" style="margin-top:4px;font-size:11px;color:#bbb;">ID: ${pid}</div>`;
+    html += `</div>`;
+    return html;
+  }).join('');
+}
+
+function renderGeneral(gf) {
+  const panel = document.getElementById('general-panel');
+  if (!gf.length) { panel.innerHTML = '<div class="empty">尚無通用意見</div>'; return; }
+  gf.sort((a,b) => (b.created_at||'').localeCompare(a.created_at||''));
+  panel.innerHTML = gf.map(e => {
+    let html = `<div class="card">`;
+    if (e.category) html += `<span class="tag tag-commented">${e.category}</span>`;
+    html += `<div style="margin-top:4px;font-size:14px;">${e.text}</div>`;
+    if (e.created_at) html += `<div class="meta">${new Date(e.created_at).toLocaleString('zh-TW')}</div>`;
+    html += `</div>`;
+    return html;
+  }).join('');
+}
+
+loadAll();
+</script></body></html>
+"""
+
+
 @app.route("/")
 def index():
     return send_from_directory("static", "index.html")
@@ -266,6 +628,16 @@ def index():
 def view_shared(history_id):
     """共享連結：載入歷史紀錄並直接顯示結果"""
     return send_from_directory("static", "index.html")
+
+
+@app.route("/admin/feedback")
+def admin_feedback():
+    """反饋管理頁面（需管理員登入）"""
+    if not session.get("user_email") or not _is_admin(session["user_email"]):
+        return render_template_string("""<!doctype html><html><head><meta charset="utf-8"><title>需要登入</title></head>
+        <body style="display:flex;justify-content:center;align-items:center;height:100vh;font-family:sans-serif;">
+        <div style="text-align:center;"><h2>需要管理員登入</h2><a href="/">回首頁登入</a></div></body></html>""")
+    return render_template_string(FEEDBACK_ADMIN_PAGE)
 
 
 @app.route("/api/feedback", methods=["GET"])
@@ -286,6 +658,8 @@ def api_feedback_post():
 
     from datetime import datetime
     fb = _load_feedback()
+    ctx_history = data.get("history_id", "")
+    ctx_address = data.get("address", "")
 
     if action == "reset":
         fb.pop(place_id, None)
@@ -294,12 +668,16 @@ def api_feedback_post():
         entry["name"] = data.get("name", entry.get("name", ""))
         entry["comment"] = data.get("comment", "")
         entry["updated_at"] = datetime.now().isoformat()
+        if ctx_history: entry["history_id"] = ctx_history
+        if ctx_address: entry["address"] = ctx_address
         fb[place_id] = entry
     elif action == "severity":
         entry = fb.get(place_id, {})
         entry["name"] = data.get("name", entry.get("name", ""))
         entry["severity_override"] = data.get("severity", "")
         entry["updated_at"] = datetime.now().isoformat()
+        if ctx_history: entry["history_id"] = ctx_history
+        if ctx_address: entry["address"] = ctx_address
         fb[place_id] = entry
     else:
         fb[place_id] = {
@@ -308,6 +686,8 @@ def api_feedback_post():
             "nuisance_cat": data.get("nuisance_cat", "嫌惡設施(自訂)"),
             "updated_at": datetime.now().isoformat(),
         }
+        if ctx_history: fb[place_id]["history_id"] = ctx_history
+        if ctx_address: fb[place_id]["address"] = ctx_address
     _save_feedback(fb)
     return jsonify({"ok": True, "total_feedback": len(fb)})
 
@@ -326,6 +706,12 @@ def _load_general_feedback():
         except Exception:
             return []
     return []
+
+
+@app.route("/api/general-feedback", methods=["GET"])
+def api_general_feedback_get():
+    """列出所有通用意見"""
+    return jsonify(_load_general_feedback())
 
 
 @app.route("/api/general-feedback", methods=["POST"])
@@ -365,8 +751,21 @@ def api_resolve_address():
 
 
 @app.route("/api/search", methods=["POST"])
+@login_required
 def api_search():
     """POST body: { "lat": 22.76, "lng": 121.15 }，可選 "radius_m": 350, "address_display": "..." """
+    email = session.get("user_email", "")
+    user = _load_user(email) if email else None
+
+    ok, reason_or_data = _portal_check_and_deduct(email, "survey")
+    if not ok:
+        return jsonify({"error": reason_or_data or "用量已達上限", "usage_exceeded": True}), 403
+
+    if reason_or_data is None and user and not _is_admin(email):
+        usage = user.get("usage", {})
+        if usage.get("search_count", 0) >= FREE_SEARCH_LIMIT:
+            return jsonify({"error": f"已達免費查詢上限（{FREE_SEARCH_LIMIT} 次）。請聯繫管理員升級帳號。", "usage_exceeded": True}), 403
+
     data = request.get_json() or {}
     lat = data.get("lat")
     lng = data.get("lng")
@@ -388,6 +787,13 @@ def api_search():
         result["address_display"] = address_display
         result = _apply_feedback(result)
         _regenerate_summary(result, address_display, radius_m)
+
+        if reason_or_data is None and user and not _is_admin(email):
+            usage = user.get("usage", {})
+            usage["search_count"] = usage.get("search_count", 0) + 1
+            user["usage"] = usage
+            _save_user(user)
+
         return jsonify(result)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -442,9 +848,11 @@ def api_history_list():
                     continue
                 rec = json.loads(raw)
                 fid = bname.replace("history/", "").replace(".json", "")
+                full_summary = rec.get("summary", "")
                 items.append({
                     "id": fid,
                     "address": rec.get("address_display", ""),
+                    "custom_title": rec.get("custom_title", ""),
                     "lat": rec.get("lat"),
                     "lng": rec.get("lng"),
                     "radius_m": rec.get("radius_m"),
@@ -454,6 +862,7 @@ def api_history_list():
                     "thumbs_display": rec.get("thumbs_display"),
                     "total_count": rec.get("total_count"),
                     "created_at": rec.get("created_at", ""),
+                    "summary_preview": full_summary[:80] if full_summary else "",
                 })
             except Exception:
                 continue
@@ -465,9 +874,11 @@ def api_history_list():
             try:
                 with open(fpath, "r", encoding="utf-8") as f:
                     rec = json.load(f)
+                full_summary = rec.get("summary", "")
                 items.append({
                     "id": fname.replace(".json", ""),
                     "address": rec.get("address_display", ""),
+                    "custom_title": rec.get("custom_title", ""),
                     "lat": rec.get("lat"),
                     "lng": rec.get("lng"),
                     "radius_m": rec.get("radius_m"),
@@ -477,6 +888,7 @@ def api_history_list():
                     "thumbs_display": rec.get("thumbs_display"),
                     "total_count": rec.get("total_count"),
                     "created_at": rec.get("created_at", ""),
+                    "summary_preview": full_summary[:80] if full_summary else "",
                 })
             except Exception:
                 continue
@@ -556,6 +968,32 @@ def api_history_share_text(history_id):
             return jsonify({"text": rec.get("summary", ""), "address": rec.get("address_display", "")})
         except Exception as e:
             return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/history/<history_id>", methods=["PATCH"])
+def api_history_rename(history_id):
+    """修改歷史紀錄的自訂名稱"""
+    safe_id = os.path.basename(history_id)
+    body = request.get_json() or {}
+    new_title = (body.get("title") or "").strip()
+
+    if GCS_BUCKET:
+        raw = _gcs_read(f"history/{safe_id}.json")
+        if not raw:
+            return jsonify({"error": "紀錄不存在"}), 404
+        rec = json.loads(raw)
+        rec["custom_title"] = new_title
+        _gcs_write(f"history/{safe_id}.json", json.dumps(rec, ensure_ascii=False, indent=1))
+    else:
+        fpath = os.path.join(HISTORY_DIR, f"{safe_id}.json")
+        if not os.path.isfile(fpath):
+            return jsonify({"error": "紀錄不存在"}), 404
+        with open(fpath, "r", encoding="utf-8") as f:
+            rec = json.load(f)
+        rec["custom_title"] = new_title
+        with open(fpath, "w", encoding="utf-8") as f:
+            json.dump(rec, f, ensure_ascii=False, indent=1)
+    return jsonify({"ok": True, "title": new_title})
 
 
 @app.route("/api/history/<history_id>", methods=["DELETE"])

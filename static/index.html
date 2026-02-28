@@ -6,7 +6,6 @@
   <title>地理設施調查 v3.7｜生活機能與嫌惡設施</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="https://unpkg.com/leaflet.gridlayer.googlemutant@0.14.4/dist/Leaflet.GoogleMutant.js"></script>
   <style>
     :root {
       --bg: #0f1419;
@@ -640,10 +639,12 @@
     .score-toggle:hover { text-decoration: underline; }
 
     /* ── History panel ── */
+    .top-actions {
+      position: fixed; top: 0.6rem; right: 0.8rem; z-index: 1000;
+      display: flex; align-items: center; gap: 0.4rem;
+    }
     .history-btn {
-      position: fixed;
-      top: 1rem;
-      right: 8.5rem;
+      position: static;
       z-index: 1000;
       background: var(--card);
       border: 1px solid var(--input-border);
@@ -771,9 +772,7 @@
 
     /* ── Theme toggle ── */
     .theme-toggle {
-      position: fixed;
-      top: 1rem;
-      right: 1.5rem;
+      position: static;
       z-index: 1000;
       background: var(--card);
       border: 1px solid var(--input-border);
@@ -789,11 +788,79 @@
       box-shadow: 0 2px 8px rgba(0,0,0,0.15);
     }
     .theme-toggle:hover { border-color: var(--accent); }
+
+    /* ── Login screen ── */
+    .login-overlay {
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background: var(--bg); z-index: 9999;
+      display: flex; justify-content: center; align-items: center;
+    }
+    .login-overlay.hidden { display: none; }
+    .login-box {
+      background: var(--card); border-radius: 20px; padding: 40px 32px;
+      text-align: center; max-width: 380px; width: 90%;
+      box-shadow: 0 8px 40px rgba(0,0,0,0.3); border: 1px solid var(--input-border);
+    }
+    .login-box h2 { margin: 0 0 8px; font-size: 1.4rem; }
+    .login-box p { color: var(--muted); font-size: 0.9rem; margin: 0 0 24px; }
+    .login-box .g-signin { display: inline-flex; justify-content: center; margin-top: 8px; }
+    .login-usage { font-size: 0.8rem; color: var(--muted); margin-top: 16px; }
+
+    /* ── User bar ── */
+    .user-bar {
+      position: static;
+      display: flex; align-items: center; gap: 8px;
+      background: var(--card); border: 1px solid var(--input-border);
+      border-radius: 20px; padding: 4px 12px 4px 4px;
+      font-size: 0.82rem; box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    }
+    .user-bar.hidden { display: none; }
+    .user-bar img { width: 28px; height: 28px; border-radius: 50%; }
+    .user-bar span { color: var(--text); }
+    .user-bar .usage-badge { color: var(--muted); font-size: 0.75rem; }
+    .user-bar button {
+      background: none; border: none; color: var(--muted); cursor: pointer;
+      font-size: 0.8rem; padding: 2px 6px;
+    }
+    .user-bar button:hover { color: var(--danger); }
+
+    .portal-btn {
+      background: var(--card); border: 1px solid var(--input-border);
+      border-radius: 20px; padding: 6px 12px; font-size: 0.82rem;
+      color: var(--text); cursor: pointer; text-decoration: none;
+      display: flex; align-items: center; gap: 4px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.15); white-space: nowrap;
+      transition: border-color 0.2s;
+    }
+    .portal-btn:hover { border-color: var(--accent); }
+
+    @media (max-width: 600px) {
+      .top-actions { flex-wrap: wrap; justify-content: flex-end; }
+      .user-bar span { display: none; }
+    }
   </style>
 </head>
 <body>
-  <button class="history-btn" id="history-btn" title="查詢歷史">📋 歷史</button>
-  <button class="theme-toggle" id="theme-toggle" title="切換明暗模式">🌙 暗色</button>
+  <div class="login-overlay" id="login-overlay">
+    <div class="login-box">
+      <h2>📍 地理設施調查 v3.7</h2>
+      <p>請先登入工具平台</p>
+      <a id="portal-login-link" href="/" style="display:inline-block;background:var(--accent);color:#fff;padding:10px 24px;border-radius:10px;text-decoration:none;font-weight:600;font-size:0.95rem;">前往登入</a>
+      <div class="login-usage" id="login-msg"></div>
+    </div>
+  </div>
+
+  <div class="top-actions">
+    <div class="user-bar hidden" id="user-bar">
+      <img id="user-avatar" src="" alt="" />
+      <span id="user-name"></span>
+      <span class="usage-badge" id="user-usage"></span>
+      <button onclick="doLogout()" title="登出">登出</button>
+    </div>
+    <a class="portal-btn hidden" id="portal-btn" href="/" title="回到工具平台">🏠 入口</a>
+    <button class="history-btn" id="history-btn" title="查詢歷史">📋 歷史</button>
+    <button class="theme-toggle" id="theme-toggle" title="切換明暗模式">🌙 暗色</button>
+  </div>
 
   <div class="history-overlay" id="history-overlay">
     <div class="history-dialog">
@@ -945,6 +1012,62 @@
   </div>
 
   <script>
+    // ── Auth ──
+    let _authUser = null;
+    const _isSharedView = window.location.pathname.startsWith("/view/");
+
+    function showLoggedIn(user) {
+      document.getElementById("login-overlay").classList.add("hidden");
+      const bar = document.getElementById("user-bar");
+      bar.classList.remove("hidden");
+      document.getElementById("user-avatar").src = user.picture || "";
+      document.getElementById("user-name").textContent = user.name || user.email;
+      if (user.is_admin) {
+        document.getElementById("user-usage").textContent = "管理員";
+      } else if (user.search_limit != null) {
+        document.getElementById("user-usage").textContent = `${user.search_count}/${user.search_limit} 次`;
+      }
+    }
+
+    function doLogout() {
+      fetch("/auth/logout", { method: "POST" }).then(r => r.json()).then(data => {
+        _authUser = null;
+        if (data.redirect) {
+          window.location.href = data.redirect;
+        } else {
+          document.getElementById("user-bar").classList.add("hidden");
+          document.getElementById("login-overlay").classList.remove("hidden");
+        }
+      });
+    }
+
+    (function initAuth() {
+      if (_isSharedView) {
+        document.getElementById("login-overlay").classList.add("hidden");
+        return;
+      }
+      fetch("/api/config").then(r => r.json()).then(cfg => {
+        if (cfg.portal_url) {
+          const pb = document.getElementById("portal-btn");
+          pb.href = cfg.portal_url;
+          pb.classList.remove("hidden");
+          const pl = document.getElementById("portal-login-link");
+          if (pl) pl.href = cfg.portal_url;
+        }
+      });
+      fetch("/auth/me")
+        .then(r => r.json())
+        .then(data => {
+          if (data.logged_in) {
+            _authUser = data;
+            showLoggedIn(data);
+          }
+        })
+        .catch(() => {
+          document.getElementById("login-overlay").classList.add("hidden");
+        });
+    })();
+
     // ── Theme toggle ──
     (function() {
       const saved = localStorage.getItem("theme") || "dark";
@@ -1028,42 +1151,30 @@
 
     const map = L.map("map").setView([DEFAULT_LAT, DEFAULT_LNG], DEFAULT_ZOOM);
 
-    const streetLayer = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    const osmLayer = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
       maxZoom: 19,
       attribution: '&copy; <a href="https://openstreetmap.org/copyright">OpenStreetMap</a>',
     });
-    const satelliteLayer = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {
-      maxZoom: 19,
-      attribution: '&copy; Esri, Maxar, Earthstar Geographics',
+    const googleStreet = L.tileLayer("https://mt{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}", {
+      maxZoom: 22, subdomains: "0123",
+      attribution: '&copy; Google Maps',
     });
-    const hybridLayer = L.layerGroup([
-      L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", { maxZoom: 19 }),
-      L.tileLayer("https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png", { maxZoom: 19, opacity: 0.45 }),
-    ]);
+    const googleSatellite = L.tileLayer("https://mt{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}", {
+      maxZoom: 22, subdomains: "0123",
+      attribution: '&copy; Google Maps',
+    });
+    const googleHybrid = L.tileLayer("https://mt{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}", {
+      maxZoom: 22, subdomains: "0123",
+      attribution: '&copy; Google Maps',
+    });
 
-    streetLayer.addTo(map);
+    googleStreet.addTo(map);
     const layerControl = L.control.layers({
-      "🗺️ 街道地圖": streetLayer,
-      "🛰️ 衛星影像（Esri）": satelliteLayer,
-      "🛰️ 衛星+路名（Esri）": hybridLayer,
+      "🗺️ Google 街道": googleStreet,
+      "🛰️ Google 衛星": googleSatellite,
+      "🛰️ Google 衛星+路名": googleHybrid,
+      "🗺️ OpenStreetMap": osmLayer,
     }, null, { position: "topright" }).addTo(map);
-
-    // 動態載入 Google Maps 圖層（需要 API Key）
-    window._addGoogleLayers = function(apiKey) {
-      if (!window.L.gridLayer || !window.L.gridLayer.googleMutant) return;
-      layerControl.addBaseLayer(L.gridLayer.googleMutant({ type: "roadmap", maxZoom: 22 }), "🗺️ Google 街道");
-      layerControl.addBaseLayer(L.gridLayer.googleMutant({ type: "satellite", maxZoom: 22 }), "🛰️ Google 衛星");
-      layerControl.addBaseLayer(L.gridLayer.googleMutant({ type: "hybrid", maxZoom: 22 }), "🛰️ Google 衛星+路名");
-    };
-    window._googleMapsCallback = function() {
-      window._addGoogleLayers();
-    };
-    fetch("/api/config").then(r => r.json()).then(cfg => {
-      if (!cfg.maps_api_key) return;
-      const s = document.createElement("script");
-      s.src = `https://maps.googleapis.com/maps/api/js?key=${cfg.maps_api_key}&callback=_googleMapsCallback&loading=async`;
-      document.head.appendChild(s);
-    }).catch(() => {});
 
     let marker = null;
     let radiusCircle = null;
@@ -1302,6 +1413,10 @@
     function sendFeedback(placeId, action, name, extraData) {
       const body = { place_id: placeId, action: action, name: name || "" };
       if (extraData) Object.assign(body, extraData);
+      if (_lastData) {
+        if (_lastData._historyId) body.history_id = _lastData._historyId;
+        if (_lastData.address_display) body.address = _lastData.address_display;
+      }
       return fetch("/api/feedback", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -2419,17 +2534,38 @@
           items.forEach(it => {
             const li = document.createElement("li");
             li.className = "history-item";
+            li.style.flexWrap = "wrap";
 
             const info = document.createElement("div");
             info.className = "history-item-info";
-            const addr = document.createElement("div");
-            addr.className = "history-item-addr";
-            addr.textContent = it.address || `${it.lat}, ${it.lng}`;
+
+            const titleRow = document.createElement("div");
+            titleRow.className = "history-item-addr";
+            const displayName = it.custom_title || it.address || `${it.lat}, ${it.lng}`;
+            titleRow.textContent = displayName;
+            if (it.custom_title && it.address) {
+              const addrSub = document.createElement("span");
+              addrSub.style.cssText = "font-weight:400; font-size:0.78rem; color:var(--muted); margin-left:6px;";
+              addrSub.textContent = `(${it.address})`;
+              titleRow.appendChild(addrSub);
+            }
+
             const meta = document.createElement("div");
             meta.className = "history-item-meta";
             meta.textContent = `${formatHistoryDate(it.created_at)} · ${it.total_count || 0} 處 · 半徑 ${it.radius_m || 350}m`;
-            info.appendChild(addr);
+            info.appendChild(titleRow);
             info.appendChild(meta);
+
+            const shareUrl = `${window.location.origin}/view/${encodeURIComponent(it.id)}`;
+            const linkRow = document.createElement("div");
+            linkRow.style.cssText = "font-size:0.72rem; color:var(--accent); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; cursor:pointer; margin-top:2px;";
+            linkRow.textContent = shareUrl;
+            linkRow.title = "點擊複製連結";
+            linkRow.addEventListener("click", (e) => {
+              e.stopPropagation();
+              copyToClipboard(shareUrl);
+            });
+            info.appendChild(linkRow);
 
             const score = document.createElement("div");
             score.className = "history-item-score";
@@ -2437,6 +2573,26 @@
 
             const actions = document.createElement("div");
             actions.className = "history-item-actions";
+
+            const renameBtn = document.createElement("button");
+            renameBtn.textContent = "✏️";
+            renameBtn.title = "改名稱";
+            renameBtn.addEventListener("click", (e) => {
+              e.stopPropagation();
+              const current = it.custom_title || it.address || "";
+              const newName = prompt("輸入新名稱：", current);
+              if (newName === null) return;
+              fetch(`/api/history/${encodeURIComponent(it.id)}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ title: newName })
+              }).then(r => r.json()).then(d => {
+                if (d.ok) {
+                  it.custom_title = d.title;
+                  loadHistoryList();
+                }
+              });
+            });
 
             const loadBtn = document.createElement("button");
             loadBtn.textContent = "📂";
@@ -2451,7 +2607,7 @@
             shareBtn.title = "分享";
             shareBtn.addEventListener("click", (e) => {
               e.stopPropagation();
-              shareHistoryRecord(it.id, it.address);
+              shareHistoryRecord(it.id, it.custom_title || it.address);
             });
 
             const delBtn = document.createElement("button");
@@ -2460,11 +2616,12 @@
             delBtn.title = "刪除";
             delBtn.addEventListener("click", (e) => {
               e.stopPropagation();
-              if (!confirm(`確定刪除「${it.address || it.id}」的紀錄嗎？`)) return;
+              if (!confirm(`確定刪除「${it.custom_title || it.address || it.id}」的紀錄嗎？`)) return;
               fetch(`/api/history/${encodeURIComponent(it.id)}`, { method: "DELETE" })
                 .then(() => loadHistoryList());
             });
 
+            actions.appendChild(renameBtn);
             actions.appendChild(loadBtn);
             actions.appendChild(shareBtn);
             actions.appendChild(delBtn);
@@ -2534,6 +2691,16 @@
       if (m) {
         const hid = decodeURIComponent(m[1]);
         setTimeout(() => loadHistoryRecord(hid), 300);
+        return;
+      }
+      const params = new URLSearchParams(window.location.search);
+      const addrParam = params.get("address");
+      if (addrParam) {
+        document.getElementById("address").value = addrParam;
+        setTimeout(() => {
+          const btn = document.getElementById("btn-locate");
+          if (btn) btn.click();
+        }, 500);
       }
     })();
   </script>

@@ -1,0 +1,71 @@
+---
+description: 周邊生活機能調查工具（real-estate-survey）專案慣例
+alwaysApply: true
+---
+
+# 周邊生活機能調查 v3.7 — 專案規則
+
+## 專案概述
+房仲帶看用的周邊環境調查工具。輸入地址/座標 → 搜尋周邊設施 → 分類評分 → 生成可分享的互動報告。總結會存入歷史紀錄，供 AD 從總結庫選取純文字使用。
+
+## 專案結構
+- `app.py`：Flask 後端（路由、API、歷史/反饋持久化、GCS 整合）
+- `survey_v37.py`：核心調查邏輯（Google Places API 搜尋、分類、評分、總結生成）
+- `static/index.html`：前端 UI（Leaflet 地圖、設施面板、反饋、歷史分享）
+- **姊妹專案**：`/Users/bagel/Projects/real-estate-ad/`（廣告生成，透過 `/api/history` 取得總結純文字）
+- **入口**：`/Users/bagel/Projects/real-estate-portal/`（統一登入後進入各工具）
+
+## 核心 API 端點
+| 端點 | 方法 | 用途 |
+|------|------|------|
+| `/api/search` | POST | 主要搜尋（lat, lng, radius_m）→ 設施清單 + summary |
+| `/api/resolve-address` | POST | 地址解析為座標（用 Places Text Search，非 Geocoding API） |
+| `/api/config` | GET | 回傳前端用的 Maps API Key |
+| `/api/feedback` | GET/POST | 設施反饋（無效/重要/嫌惡/嚴重度） |
+| `/api/history` | GET | 歷史列表（含 summary_preview），AD 用於下拉選單 |
+| `/api/history/<id>` | GET | 單筆完整紀錄（含 summary 純文字），AD 用於填入環境說明 |
+| `/api/history` | POST/DELETE | 儲存、刪除歷史紀錄 |
+| `/api/refresh-summary` | POST | 依反饋重新生成總結 |
+| `/view/<history_id>` | GET | 共享連結，載入完整互動頁面 |
+
+## 前端功能
+- **地圖**：Google 街道（預設）/衛星/混合 + OSM，使用 Google tile URL（非 GoogleMutant）
+- **設施面板**：大類分組、品牌圖示、地圖標記顯示/隱藏（單項 + 全類別 + 全域）
+- **評分**：生活方便性（★）+ 嫌惡設施（⚠️）+ 推薦指數（👍），加權計分含說明
+- **反饋**：標記無效/重要/嫌惡、調整嚴重度、文字意見、undo 機制、更新總結按鈕
+- **歷史分享**：自動儲存、載入歷史、分享互動連結、匯出 TXT/PDF
+- **座標欄**：合併顯示 `lat, lng`，附 Google Maps 連結，支援貼上座標
+- **URL 參數**：`?address=xxx` 自動填入定位
+- **登入**：從 Portal 登入後，點「進入」→ token 跳轉 `/auth/portal-login` → 建立 session。右上角有「🏠 入口」按鈕
+
+## 分類邏輯（survey_v37.py）
+- 優先用 Google `place_types` + `primaryType` → fallback 關鍵字匹配
+- 二次分類 `_reclassify_by_google_label`：用 `primaryTypeDisplayName` 識別隱藏嫌惡設施
+- 忠實呈現 Google 分類標籤（如「回收服務中心」），不修飾
+
+## 持久化儲存
+- 有 `GCS_BUCKET` 環境變數 → 用 GCS（Cloud Run 部署）
+- 無 → 用本地 `feedback.json` + `history/` 目錄（本機開發）
+
+## 環境變數
+- 集中存放於 `/Users/bagel/Projects/.env`，app.py 先讀本地再讀上層
+- Cloud Run 環境變數透過 `gcloud run services update --set-env-vars` 設定
+- GCS bucket：`real-estate-survey-data-0393195862`
+
+## 部署
+- **Cloud Run**：`gcloud run deploy real-estate-survey --source . --region asia-east1 --allow-unauthenticated --clear-base-image`
+- **GitHub**：`a0911190009/real-estate-survey`
+- **本機**：`python app.py`（port 5000）
+- **同步到 GitHub + Cloud Run**：在 `~/Projects/` 執行 `./sync-to-cloud-and-github.sh`（會依序推送有變更的 portal/survey/ad 到 GitHub，再執行 deploy-all.sh 部署三服務）。可帶參數當 commit 訊息：`./sync-to-cloud-and-github.sh "功能說明"`。
+
+## 程式慣例
+- 回應語言：繁體中文
+- 距離人性化：<500m 步行分鐘、>500m 加註騎車分鐘
+- 重要設施（學校、連鎖店、郵局等）粗體標色
+- 嫌惡設施依距離判定嚴重度（🔴/🟡/🟢）
+
+## 合作習慣（Agent 與使用者）
+- **模型建議**：日常開發、小功能、修 bug 用 Sonnet 4 即可；大規模重構或跨專案架構調整再建議用 Opus。
+- **前端動態 onclick**：按鈕傳入 ID 時用單引號包字串，勿用 `JSON.stringify(id)`（雙引號會截斷 HTML 屬性）。
+- **部署與儲存**：Survey 有 GCS 時歷史與反饋會持久化；部署後若行為異常可提醒檢查 Cloud Run 環境變數是否已設定。
+- **同步 Cloud + GitHub**：完成跨專案或部署相關修改後，可提醒使用者執行 `~/Projects/sync-to-cloud-and-github.sh` 一次推送並部署。
