@@ -1145,87 +1145,70 @@ def run_survey(lat, lng, radius_m=None, api_key=None):
 
     all_facilities = {}
     total = len(FULL_CATEGORIES)
-    log.info("🚀 開始調查：(%s, %s) 半徑 %dm，共 %d 個類別", lat, lng, radius_m, total)
+    log.info("🚀 開始調查：(%s, %s) 半徑 %dm，共 %d 個類別（並行查詢）", lat, lng, radius_m, total)
 
-    for i, category in enumerate(FULL_CATEGORIES, 1):
-        log.info("📦 [%d/%d] 查詢：%s", i, total, category)
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    def _process_item(item, category_or_group, lat, lng, radius_m):
+        place_id = item.get("id")
+        if not place_id:
+            return None
+        loc = item.get("location", {})
+        plat = loc.get("latitude")
+        plng = loc.get("longitude")
+        if plat is None or plng is None:
+            return None
+        dist = haversine_m(lat, lng, plat, plng)
+        if dist > radius_m * 1.5:
+            return None
+        name = (item.get("displayName") or {}).get("text", "")
+        ptypes = item.get("types", [])
+        ptype = item.get("primaryType", "")
+        ptype_disp = (item.get("primaryTypeDisplayName") or {}).get("text", "")
+        cat = normalize_category(category_or_group, ptypes, ptype)
+        gtype_label = _get_google_type_label(ptypes, ptype, ptype_disp)
+        cat = _reclassify_by_google_label(cat, gtype_label, name)
+        return (place_id, {
+            "name": name,
+            "distance": round(dist, 1),
+            "category": cat,
+            "address": item.get("formattedAddress", ""),
+            "lat": plat,
+            "lng": plng,
+            "place_id": place_id,
+            "google_type": gtype_label,
+            "notable": is_notable(name, cat, ptypes),
+        })
+
+    def _query_text_category(category):
         items = query_places(category, lat, lng, radius_m, api_key)
-        added = 0
-        for item in items:
-            place_id = item.get("id")
-            if not place_id:
-                continue
-            loc = item.get("location", {})
-            plat = loc.get("latitude")
-            plng = loc.get("longitude")
-            if plat is None or plng is None:
-                continue
-            dist = haversine_m(lat, lng, plat, plng)
-            if dist <= radius_m * 1.5 and place_id not in all_facilities:
-                name = (item.get("displayName") or {}).get("text", "")
-                ptypes = item.get("types", [])
-                ptype = item.get("primaryType", "")
-                ptype_disp = (item.get("primaryTypeDisplayName") or {}).get("text", "")
-                cat = normalize_category(category, ptypes, ptype)
-                gtype_label = _get_google_type_label(ptypes, ptype, ptype_disp)
-                cat = _reclassify_by_google_label(cat, gtype_label, name)
-                log.debug("   📌 %s → types=%s, primaryType=%s, dispName=%s → label=%s, cat=%s",
-                          name, ptypes, ptype, ptype_disp, gtype_label, cat)
-                all_facilities[place_id] = {
-                    "name": name,
-                    "distance": round(dist, 1),
-                    "category": cat,
-                    "address": item.get("formattedAddress", ""),
-                    "lat": plat,
-                    "lng": plng,
-                    "place_id": place_id,
-                    "google_type": gtype_label,
-                    "notable": is_notable(name, cat, ptypes),
-                }
-                added += 1
-        if added > 0:
-            log.info("   ✅ 新增 %d 筆（累計 %d）", added, len(all_facilities))
+        return ("text", category, items)
 
-    # ── 第二階段：Nearby Search 按 Google 地點類型補齊 ──
-    log.info("🔄 第二階段：Nearby Search 補齊（共 %d 組類型）", len(NEARBY_TYPE_GROUPS))
-    for idx, (types, group_name) in enumerate(NEARBY_TYPE_GROUPS, 1):
-        log.info("📦 [Nearby %d/%d] %s：%s", idx, len(NEARBY_TYPE_GROUPS), group_name, types)
+    def _query_nearby_group(types, group_name):
         items = query_nearby(types, lat, lng, radius_m, api_key)
-        added = 0
-        for item in items:
-            place_id = item.get("id")
-            if not place_id or place_id in all_facilities:
+        return ("nearby", group_name, items)
+
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        futures = []
+        for category in FULL_CATEGORIES:
+            futures.append(executor.submit(_query_text_category, category))
+        for types, group_name in NEARBY_TYPE_GROUPS:
+            futures.append(executor.submit(_query_nearby_group, types, group_name))
+
+        for future in as_completed(futures):
+            try:
+                qtype, cat_name, items = future.result()
+            except Exception as e:
+                log.warning("查詢失敗：%s", e)
                 continue
-            loc = item.get("location", {})
-            plat = loc.get("latitude")
-            plng = loc.get("longitude")
-            if plat is None or plng is None:
-                continue
-            dist = haversine_m(lat, lng, plat, plng)
-            if dist <= radius_m * 1.5:
-                name = (item.get("displayName") or {}).get("text", "")
-                ptypes = item.get("types", [])
-                ptype = item.get("primaryType", "")
-                ptype_disp = (item.get("primaryTypeDisplayName") or {}).get("text", "")
-                cat = normalize_category(group_name, ptypes, ptype)
-                gtype_label = _get_google_type_label(ptypes, ptype, ptype_disp)
-                cat = _reclassify_by_google_label(cat, gtype_label, name)
-                log.debug("   📌 %s → types=%s, primaryType=%s, dispName=%s → label=%s, cat=%s",
-                          name, ptypes, ptype, ptype_disp, gtype_label, cat)
-                all_facilities[place_id] = {
-                    "name": name,
-                    "distance": round(dist, 1),
-                    "category": cat,
-                    "address": item.get("formattedAddress", ""),
-                    "lat": plat,
-                    "lng": plng,
-                    "place_id": place_id,
-                    "google_type": gtype_label,
-                    "notable": is_notable(name, cat, ptypes),
-                }
-                added += 1
-        if added > 0:
-            log.info("   ✅ 補齊 %d 筆（累計 %d）", added, len(all_facilities))
+            added = 0
+            for item in items:
+                result = _process_item(item, cat_name, lat, lng, radius_m)
+                if result and result[0] not in all_facilities:
+                    all_facilities[result[0]] = result[1]
+                    added += 1
+            if added > 0:
+                log.info("   ✅ [%s] %s：新增 %d 筆（累計 %d）", qtype, cat_name, added, len(all_facilities))
 
     all_found = sorted(all_facilities.values(), key=lambda x: x["distance"])
     facilities = [f for f in all_found if f["distance"] <= radius_m]

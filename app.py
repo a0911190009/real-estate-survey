@@ -5,10 +5,21 @@
 逾時時可改用 Gemini 取得簡要說明（需 GOOGLE_API_KEY 或 GOOGLE_AI_STUDIO_API_KEY）
 """
 
+import logging
 import os
 import json
 import functools
+import threading
 from flask import Flask, request, jsonify, send_from_directory, render_template_string, session, redirect
+
+try:
+    from pythonjsonlogger import jsonlogger
+    _handler = logging.StreamHandler()
+    _handler.setFormatter(jsonlogger.JsonFormatter("%(asctime)s %(levelname)s %(name)s %(message)s"))
+    logging.root.handlers = [_handler]
+    logging.root.setLevel(logging.INFO)
+except ImportError:
+    pass
 from itsdangerous import URLSafeTimedSerializer, SignatureExpired, BadSignature
 
 try:
@@ -32,7 +43,10 @@ except Exception:
 from survey_v37 import run_survey, resolve_address, RADIUS_DEFAULT
 
 app = Flask(__name__, static_folder="static", static_url_path="")
-app.secret_key = os.environ.get("FLASK_SECRET_KEY", "dev-fallback-secret-key-change-me")
+_secret = os.environ.get("FLASK_SECRET_KEY", "")
+if not _secret and not os.environ.get("FLASK_DEBUG"):
+    raise RuntimeError("FLASK_SECRET_KEY 未設定。生產環境必須設定此環境變數。")
+app.secret_key = _secret or "dev-only-insecure-key"
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 app.config["SESSION_COOKIE_SECURE"] = not os.environ.get("FLASK_DEBUG")
 
@@ -43,6 +57,18 @@ PORTAL_URL = (os.environ.get("PORTAL_URL") or "").strip()
 SERVICE_API_KEY = (os.environ.get("SERVICE_API_KEY") or "").strip()
 TOKEN_SERIALIZER = URLSafeTimedSerializer(app.secret_key)
 TOKEN_MAX_AGE = 60
+
+
+@app.route("/health")
+def health_check():
+    status = {"service": "survey", "status": "ok", "gcs": bool(GCS_BUCKET)}
+    if GCS_BUCKET:
+        try:
+            _get_gcs_bucket()
+            status["gcs_reachable"] = True
+        except Exception:
+            status["gcs_reachable"] = False
+    return jsonify(status)
 
 
 @app.route("/api/config")
@@ -176,13 +202,17 @@ def _load_feedback():
     return {}
 
 
+_feedback_lock = threading.Lock()
+
+
 def _save_feedback(data):
     data_str = json.dumps(data, ensure_ascii=False, indent=2)
-    if GCS_BUCKET:
-        _gcs_write("feedback.json", data_str)
-    else:
-        with open(FEEDBACK_FILE, "w", encoding="utf-8") as f:
-            f.write(data_str)
+    with _feedback_lock:
+        if GCS_BUCKET:
+            _gcs_write("feedback.json", data_str)
+        else:
+            with open(FEEDBACK_FILE, "w", encoding="utf-8") as f:
+                f.write(data_str)
 
 
 def _apply_feedback(result):
@@ -324,7 +354,8 @@ def login_required(f):
     def decorated(*args, **kwargs):
         if SERVICE_API_KEY:
             auth_header = request.headers.get("Authorization", "")
-            if auth_header == f"Bearer {SERVICE_API_KEY}":
+            import hmac as _hmac
+            if _hmac.compare_digest(auth_header, f"Bearer {SERVICE_API_KEY}"):
                 return f(*args, **kwargs)
         if not session.get("user_email"):
             return jsonify({"error": "未登入", "login_required": True}), 401
@@ -894,7 +925,12 @@ def api_history_list():
                 })
             except Exception:
                 continue
-    return jsonify(items)
+    limit = request.args.get("limit", type=int)
+    offset = request.args.get("offset", 0, type=int)
+    total = len(items)
+    if limit is not None:
+        items = items[offset:offset + limit]
+    return jsonify({"items": items, "total": total}) if limit is not None else jsonify(items)
 
 
 @app.route("/api/history/<history_id>", methods=["GET"])

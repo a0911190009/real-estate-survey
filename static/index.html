@@ -38,6 +38,11 @@
       --sublist-border: #d8dee4;
     }
     * { box-sizing: border-box; }
+    .toast-container{position:fixed;bottom:1.5rem;left:50%;transform:translateX(-50%);z-index:9999;display:flex;flex-direction:column;gap:0.5rem;pointer-events:none}
+    .toast-item{pointer-events:auto;padding:0.65rem 1.1rem;border-radius:0.65rem;font-size:0.85rem;color:#fff;backdrop-filter:blur(12px);box-shadow:0 4px 20px rgba(0,0,0,.3);opacity:0;transform:translateY(0.5rem);animation:toastIn .25s ease forwards}
+    .toast-item.toast-out{animation:toastOut .25s ease forwards}
+    .toast-success{background:rgba(34,197,94,.9)}.toast-error{background:rgba(239,68,68,.9)}.toast-info{background:rgba(59,130,246,.9)}
+    @keyframes toastIn{to{opacity:1;transform:translateY(0)}}@keyframes toastOut{to{opacity:0;transform:translateY(-.5rem)}}
     body {
       font-family: "Segoe UI", "Noto Sans TC", sans-serif;
       background: var(--bg);
@@ -841,6 +846,7 @@
   </style>
 </head>
 <body>
+  <div class="toast-container" id="toast-container"></div>
   <div class="login-overlay" id="login-overlay">
     <div class="login-box">
       <h2>📍 地理設施調查 v3.7</h2>
@@ -1012,6 +1018,15 @@
   </div>
 
   <script>
+    function toast(msg, type) {
+      type = type || 'info';
+      var c = document.getElementById('toast-container');
+      var el = document.createElement('div');
+      el.className = 'toast-item toast-' + type;
+      el.textContent = msg;
+      c.appendChild(el);
+      setTimeout(function(){el.classList.add('toast-out');setTimeout(function(){el.remove();},300);},2500);
+    }
     // ── Auth ──
     let _authUser = null;
     const _isSharedView = window.location.pathname.startsWith("/view/");
@@ -2269,7 +2284,7 @@
           }),
         });
         const d = await res.json();
-        if (!res.ok) { alert(d.error || "更新失敗"); return; }
+        if (!res.ok) { toast(d.error || "更新失敗", "error"); return; }
 
         if (d.summary) {
           document.getElementById("summary-text").textContent = d.summary;
@@ -2334,7 +2349,7 @@
         btn.style.background = "#3fb950";
         setTimeout(() => { btn.style.display = "none"; }, 2000);
       } catch (e) {
-        alert("更新總結失敗：" + (e.message || ""));
+        toast("更新總結失敗：" + (e.message || ""), "error");
       } finally {
         btn.disabled = false;
       }
@@ -2651,7 +2666,7 @@
         }
         copyToClipboard(shareText);
       } catch (e) {
-        alert("分享失敗：" + (e.message || ""));
+        toast("分享失敗：" + (e.message || ""), "error");
       }
     }
 

@@ -6,13 +6,18 @@
 set -e
 PROJECTS_ROOT="/Users/chenweiliang/Projects"
 REGION="asia-east1"
+DEPLOY_TAG="v$(date +%Y%m%d%H%M)"
+echo "部署標籤：$DEPLOY_TAG"
 
 # 從 .env 讀取（若沒有則用預設）
 ENV_FILE="$PROJECTS_ROOT/.env"
 if [ -f "$ENV_FILE" ]; then
   source "$ENV_FILE" 2>/dev/null || true
 fi
-SERVICE_API_KEY="${SERVICE_API_KEY:-pKg0ICqr1Jy1udrVYZQArfE0w0YxOlyWGH355GPvSlY}"
+if [ -z "${SERVICE_API_KEY}" ]; then
+  echo "❌ 錯誤：SERVICE_API_KEY 未設定。請在 .env 中設定或 export SERVICE_API_KEY=..." >&2
+  exit 1
+fi
 PORTAL_URL="${PORTAL_URL:-https://real-estate-portal-334765337861.asia-east1.run.app}"
 SURVEY_URL="${SURVEY_URL:-https://real-estate-survey-334765337861.asia-east1.run.app}"
 AD_URL="${AD_URL:-https://real-estate-ad-334765337861.asia-east1.run.app}"
@@ -59,10 +64,14 @@ echo ""
 echo "========== 部署 AD =========="
 cd "$PROJECTS_ROOT/real-estate-ad"
 gcloud run deploy real-estate-ad --source . --region "$REGION" --allow-unauthenticated \
-  --set-env-vars "SERVICE_API_KEY=$SERVICE_API_KEY,PORTAL_URL=$PORTAL_URL,GOOGLE_OAUTH_CLIENT_ID=$GOOGLE_OAUTH_CLIENT_ID,ADMIN_EMAILS=$ADMIN_EMAILS,FLASK_SECRET_KEY=$FLASK_SECRET_KEY,GOOGLE_API_KEY=$GOOGLE_API_KEY,OPENAI_API_KEY=$OPENAI_API_KEY,GROK_API_KEY=$GROK_API_KEY,DEEPSEEK_API_KEY=$DEEPSEEK_API_KEY,ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY,DASHSCOPE_API_KEY=$DASHSCOPE_API_KEY,TONGYI_API_KEY=$TONGYI_API_KEY,SURVEY_API_URL=$SURVEY_API_URL" \
+  --set-env-vars "SERVICE_API_KEY=$SERVICE_API_KEY,PORTAL_URL=$PORTAL_URL,GOOGLE_OAUTH_CLIENT_ID=$GOOGLE_OAUTH_CLIENT_ID,ADMIN_EMAILS=$ADMIN_EMAILS,FLASK_SECRET_KEY=$FLASK_SECRET_KEY,GOOGLE_API_KEY=$GOOGLE_API_KEY,OPENAI_API_KEY=$OPENAI_API_KEY,GROK_API_KEY=$GROK_API_KEY,DEEPSEEK_API_KEY=$DEEPSEEK_API_KEY,ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY,DASHSCOPE_API_KEY=$DASHSCOPE_API_KEY,TONGYI_API_KEY=$TONGYI_API_KEY,SURVEY_API_URL=$SURVEY_API_URL,GCS_BUCKET=$GCS_BUCKET" \
   --quiet
 echo "AD 部署完成"
 echo ""
 
-echo "========== 全部部署完成 =========="
+echo "========== 全部部署完成（$DEPLOY_TAG） =========="
 echo "請到 Cloud Run 主控台確認三個服務的環境變數（必要時補上 FLASK_SECRET_KEY、GOOGLE_OAUTH_CLIENT_ID 等）。"
+echo ""
+echo "若需回滾，可使用以下指令："
+echo "  gcloud run services update-traffic <SERVICE> --to-revisions=<REVISION>=100 --region $REGION"
+echo "  或到 Cloud Run 主控台 → 修訂版本 → 管理流量"
