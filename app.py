@@ -108,6 +108,8 @@ _APP_DIR = os.path.dirname(os.path.abspath(__file__))
 USERS_DIR = os.path.join(_APP_DIR, "users")
 os.makedirs(USERS_DIR, exist_ok=True)
 GCS_BUCKET = os.environ.get("GCS_BUCKET", "")
+# 歷史在 GCS 的前綴；改版勿隨意變更，僅能透過遷移腳本與新路徑並存
+HISTORY_GCS_PREFIX = (os.environ.get("HISTORY_GCS_PREFIX") or "history").strip().rstrip("/")
 _gcs_client = None
 _gcs_bucket = None
 
@@ -838,7 +840,7 @@ def api_history_list():
     """列出所有歷史紀錄（僅摘要，不含完整設施資料）"""
     items = []
     if GCS_BUCKET:
-        blobs = sorted(_gcs_list("history/"), reverse=True)
+        blobs = sorted(_gcs_list(HISTORY_GCS_PREFIX + "/"), reverse=True)
         for bname in blobs:
             if not bname.endswith(".json"):
                 continue
@@ -847,7 +849,7 @@ def api_history_list():
                 if not raw:
                     continue
                 rec = json.loads(raw)
-                fid = bname.replace("history/", "").replace(".json", "")
+                fid = bname.replace(HISTORY_GCS_PREFIX + "/", "").replace(".json", "")
                 full_summary = rec.get("summary", "")
                 items.append({
                     "id": fid,
@@ -900,7 +902,7 @@ def api_history_load(history_id):
     """載入指定歷史紀錄的完整資料"""
     safe_id = os.path.basename(history_id)
     if GCS_BUCKET:
-        raw = _gcs_read(f"history/{safe_id}.json")
+        raw = _gcs_read(f"{HISTORY_GCS_PREFIX}/{safe_id}.json")
         if not raw:
             return jsonify({"error": "紀錄不存在"}), 404
         try:
@@ -937,7 +939,7 @@ def api_history_save():
     data["created_at"] = now.isoformat()
     data_str = json.dumps(data, ensure_ascii=False, indent=1)
     if GCS_BUCKET:
-        _gcs_write(f"history/{history_id}.json", data_str)
+        _gcs_write(f"{HISTORY_GCS_PREFIX}/{history_id}.json", data_str)
     else:
         fpath = os.path.join(HISTORY_DIR, f"{history_id}.json")
         with open(fpath, "w", encoding="utf-8") as f:
@@ -950,7 +952,7 @@ def api_history_share_text(history_id):
     """產生可分享的純文字摘要"""
     safe_id = os.path.basename(history_id)
     if GCS_BUCKET:
-        raw = _gcs_read(f"history/{safe_id}.json")
+        raw = _gcs_read(f"{HISTORY_GCS_PREFIX}/{safe_id}.json")
         if not raw:
             return jsonify({"error": "紀錄不存在"}), 404
         try:
@@ -978,12 +980,12 @@ def api_history_rename(history_id):
     new_title = (body.get("title") or "").strip()
 
     if GCS_BUCKET:
-        raw = _gcs_read(f"history/{safe_id}.json")
+        raw = _gcs_read(f"{HISTORY_GCS_PREFIX}/{safe_id}.json")
         if not raw:
             return jsonify({"error": "紀錄不存在"}), 404
         rec = json.loads(raw)
         rec["custom_title"] = new_title
-        _gcs_write(f"history/{safe_id}.json", json.dumps(rec, ensure_ascii=False, indent=1))
+        _gcs_write(f"{HISTORY_GCS_PREFIX}/{safe_id}.json", json.dumps(rec, ensure_ascii=False, indent=1))
     else:
         fpath = os.path.join(HISTORY_DIR, f"{safe_id}.json")
         if not os.path.isfile(fpath):
@@ -1001,7 +1003,7 @@ def api_history_delete(history_id):
     """刪除一筆歷史紀錄"""
     safe_id = os.path.basename(history_id)
     if GCS_BUCKET:
-        _gcs_delete(f"history/{safe_id}.json")
+        _gcs_delete(f"{HISTORY_GCS_PREFIX}/{safe_id}.json")
         return jsonify({"ok": True})
     else:
         fpath = os.path.join(HISTORY_DIR, f"{safe_id}.json")

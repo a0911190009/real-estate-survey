@@ -46,6 +46,7 @@ alwaysApply: true
 ## 持久化儲存
 - 有 `GCS_BUCKET` 環境變數 → 用 GCS（Cloud Run 部署）
 - 無 → 用本地 `feedback.json` + `history/` 目錄（本機開發）
+- **歷史路徑**：本機由 `HISTORY_DIR`、GCS 由 `HISTORY_GCS_PREFIX`（預設 `history/`）決定；詳見 `docs/歷史儲存位置與分開管理.md`。改版時不得直接變更歷史路徑或格式，僅能透過遷移腳本與新路徑並存。
 
 ## 環境變數
 - 集中存放於 `/Users/bagel/Projects/.env`，app.py 先讀本地再讀上層
