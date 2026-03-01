@@ -37,6 +37,12 @@ SURVEY_API_URL="${SURVEY_API_URL:-$SURVEY_URL}"
 GCS_BUCKET="${GCS_BUCKET:-}"
 PORTAL_TITLE="${PORTAL_TITLE:-房仲 AI 工具平台}"
 
+if [ -z "$GCS_BUCKET" ]; then
+  echo "⚠️  警告：GCS_BUCKET 未設定。歷史與物件資料將存在容器內，每次改版部署後都會清空。"
+  echo "    若需永久保留歷史，請在 .env 中設定 GCS_BUCKET（例如：real-estate-survey-data-0393195862）。"
+  echo ""
+fi
+
 echo "使用 REGION=$REGION"
 echo "PORTAL_URL=$PORTAL_URL"
 echo "SERVICE_API_KEY 已設定（長度 ${#SERVICE_API_KEY}）"
@@ -71,6 +77,10 @@ echo ""
 
 echo "========== 全部部署完成（$DEPLOY_TAG） =========="
 echo "請到 Cloud Run 主控台確認三個服務的環境變數（必要時補上 FLASK_SECRET_KEY、GOOGLE_OAUTH_CLIENT_ID 等）。"
+if [ -z "$GCS_BUCKET" ]; then
+  echo ""
+  echo "⚠️  提醒：本次未設定 GCS_BUCKET，歷史與物件資料在下次改版後會清空。請在 .env 設定 GCS_BUCKET 後重新部署。"
+fi
 echo ""
 echo "若需回滾，可使用以下指令："
 echo "  gcloud run services update-traffic <SERVICE> --to-revisions=<REVISION>=100 --region $REGION"
