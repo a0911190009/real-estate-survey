@@ -2396,8 +2396,10 @@
           });
           const d = await res.json();
           if (d.id) { historyId = d.id; _lastData._historyId = d.id; }
+          if (d.share_path) _lastData._sharePath = d.share_path;
         }
-        const shareUrl = `${window.location.origin}/view/${encodeURIComponent(historyId)}`;
+        const pathForView = _lastData._sharePath || historyId;
+        const shareUrl = `${window.location.origin}/view/${encodeURIComponent(pathForView)}`;
         const addr = _lastData.address_display || "查詢結果";
         const shareText = `📍 ${addr} 周邊生活機能報告\n${shareUrl}`;
 
@@ -2508,6 +2510,7 @@
         body: JSON.stringify(payload),
       }).then(r => r.json()).then(d => {
         if (d.id) _lastData._historyId = d.id;
+        if (d.share_path) _lastData._sharePath = d.share_path;
       }).catch(() => {});
     }
 
@@ -2539,10 +2542,16 @@
     function loadHistoryList() {
       historyList.innerHTML = '<li class="history-empty">載入中…</li>';
       fetch("/api/history")
-        .then(r => r.json())
+        .then(r => {
+          if (r.status === 401) {
+            historyList.innerHTML = '<li class="history-empty">請先登入後再查看歷史紀錄</li>';
+            return [];
+          }
+          return r.json();
+        })
         .then(items => {
-          if (!items.length) {
-            historyList.innerHTML = '<li class="history-empty">尚無查詢紀錄</li>';
+          if (!items || !items.length) {
+            if (historyList.innerHTML.includes("載入中")) historyList.innerHTML = '<li class="history-empty">尚無查詢紀錄</li>';
             return;
           }
           historyList.innerHTML = "";
@@ -2571,7 +2580,7 @@
             info.appendChild(titleRow);
             info.appendChild(meta);
 
-            const shareUrl = `${window.location.origin}/view/${encodeURIComponent(it.id)}`;
+            const shareUrl = `${window.location.origin}/view/${encodeURIComponent(it.share_path || it.id)}`;
             const linkRow = document.createElement("div");
             linkRow.style.cssText = "font-size:0.72rem; color:var(--accent); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; cursor:pointer; margin-top:2px;";
             linkRow.textContent = shareUrl;
@@ -2622,7 +2631,7 @@
             shareBtn.title = "分享";
             shareBtn.addEventListener("click", (e) => {
               e.stopPropagation();
-              shareHistoryRecord(it.id, it.custom_title || it.address);
+              shareHistoryRecord(it.id, it.custom_title || it.address, it.share_path);
             });
 
             const delBtn = document.createElement("button");
@@ -2654,10 +2663,11 @@
         });
     }
 
-    async function shareHistoryRecord(id, address) {
+    async function shareHistoryRecord(id, address, sharePath) {
       try {
         const addr = address || "查詢結果";
-        const shareUrl = `${window.location.origin}/view/${encodeURIComponent(id)}`;
+        const pathForView = sharePath || id;
+        const shareUrl = `${window.location.origin}/view/${encodeURIComponent(pathForView)}`;
         const shareText = `📍 ${addr} 周邊生活機能報告\n${shareUrl}`;
         if (navigator.share && navigator.canShare && navigator.canShare({ url: shareUrl })) {
           try { await navigator.share({ title: `${addr} 周邊生活機能報告`, url: shareUrl }); return; } catch (e) {
@@ -2675,30 +2685,49 @@
       showLoading(true);
       document.getElementById("error").textContent = "";
 
+      function onData(data) {
+        if (data.login_required) {
+          document.getElementById("error").textContent = "請先登入後再載入歷史紀錄";
+          showLoading(false);
+          return;
+        }
+        if (data.lat != null) document.getElementById("lat").value = data.lat;
+        if (data.lng != null) document.getElementById("lng").value = data.lng;
+        if (data.radius_m) document.getElementById("radius_m").value = data.radius_m;
+        if (data.address_display) document.getElementById("address").value = data.address_display;
+        syncLatLngDisplay();
+        if (data.lat != null && data.lng != null) updateMapMarker(data.lat, data.lng);
+        renderResult(data);
+        document.getElementById("result").classList.add("show");
+        showLoading(false);
+      }
+      function onErr(e) {
+        document.getElementById("error").textContent = e.message || "載入失敗";
+        showLoading(false);
+      }
+
+      if (id.includes("/")) {
+        const parts = id.split("/");
+        const userSafe = parts[0];
+        const rest = parts.slice(1).join("/");
+        fetch(`/api/history/shared/${encodeURIComponent(userSafe)}/${encodeURIComponent(rest)}`)
+          .then(r => { if (!r.ok) throw new Error("紀錄不存在或已刪除"); return r.json(); })
+          .then(onData).catch(onErr);
+        return;
+      }
       fetch(`/api/history/${encodeURIComponent(id)}`)
         .then(r => {
+          if (r.status === 401) {
+            return fetch(`/api/history/shared/legacy/${encodeURIComponent(id)}`).then(r2 => {
+              if (!r2.ok) throw new Error("紀錄不存在或已刪除");
+              return r2.json();
+            });
+          }
           if (!r.ok) throw new Error("紀錄不存在或已刪除");
           return r.json();
         })
-        .then(data => {
-          if (data.lat != null) document.getElementById("lat").value = data.lat;
-          if (data.lng != null) document.getElementById("lng").value = data.lng;
-          if (data.radius_m) document.getElementById("radius_m").value = data.radius_m;
-          if (data.address_display) document.getElementById("address").value = data.address_display;
-          syncLatLngDisplay();
-
-          if (data.lat != null && data.lng != null) {
-            updateMapMarker(data.lat, data.lng);
-          }
-
-          renderResult(data);
-          document.getElementById("result").classList.add("show");
-          showLoading(false);
-        })
-        .catch(e => {
-          document.getElementById("error").textContent = e.message || "載入失敗";
-          showLoading(false);
-        });
+        .then(onData)
+        .catch(onErr);
     }
     // ── Auto-load shared view ──
     (function() {

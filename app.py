@@ -186,6 +186,35 @@ HISTORY_DIR = os.environ.get("HISTORY_DIR") or os.path.join(_APP_DIR, "history")
 os.makedirs(HISTORY_DIR, exist_ok=True)
 
 
+def _safe_email(email):
+    """用於路徑的 email 安全字串（與 Portal/Library 一致）"""
+    return email.replace("@", "_at_").replace(".", "_") if email else ""
+
+
+def _history_user_prefix(safe_email):
+    """歷史紀錄在 GCS/本機的「每用戶」前綴。"""
+    if not safe_email:
+        return None
+    return f"users/{safe_email}/"
+
+
+def _history_path_for_user(safe_email, history_id, for_gcs=True):
+    """一筆歷史的儲存路徑。for_gcs=True 為 GCS 相對路徑，False 為本機路徑。"""
+    safe_id = os.path.basename(history_id).replace("..", "").strip()
+    if not safe_id.endswith(".json"):
+        safe_id = f"{safe_id}.json"
+    prefix = _history_user_prefix(safe_email)
+    if not prefix:
+        if for_gcs and GCS_BUCKET:
+            return f"{HISTORY_GCS_PREFIX}/{safe_id}"
+        return os.path.join(HISTORY_DIR, safe_id)
+    if for_gcs and GCS_BUCKET:
+        return f"{HISTORY_GCS_PREFIX}/{prefix}{safe_id}"
+    os.makedirs(os.path.join(HISTORY_DIR, prefix.replace("/", os.sep).rstrip(os.sep)), exist_ok=True)
+    return os.path.join(HISTORY_DIR, prefix.replace("/", os.sep), safe_id)
+
+
+
 def _load_feedback():
     if GCS_BUCKET:
         raw = _gcs_read("feedback.json")
@@ -882,10 +911,15 @@ def api_refresh_summary():
 
 @app.route("/api/history", methods=["GET"])
 def api_history_list():
-    """列出所有歷史紀錄（僅摘要，不含完整設施資料）"""
+    """列出目前登入使用者的歷史紀錄（僅摘要）。未登入回傳 401。"""
+    email = session.get("user_email")
+    if not email:
+        return jsonify({"error": "請先登入", "login_required": True}), 401
+    safe = _safe_email(email)
+    prefix = _history_user_prefix(safe)
     items = []
-    if GCS_BUCKET:
-        blobs = sorted(_gcs_list(HISTORY_GCS_PREFIX + "/"), reverse=True)
+    if GCS_BUCKET and prefix:
+        blobs = sorted(_gcs_list(HISTORY_GCS_PREFIX + "/" + prefix), reverse=True)
         for bname in blobs:
             if not bname.endswith(".json"):
                 continue
@@ -894,7 +928,7 @@ def api_history_list():
                 if not raw:
                     continue
                 rec = json.loads(raw)
-                fid = bname.replace(HISTORY_GCS_PREFIX + "/", "").replace(".json", "")
+                fid = bname.replace(HISTORY_GCS_PREFIX + "/" + prefix, "").replace(".json", "")
                 full_summary = rec.get("summary", "")
                 items.append({
                     "id": fid,
@@ -910,35 +944,40 @@ def api_history_list():
                     "total_count": rec.get("total_count"),
                     "created_at": rec.get("created_at", ""),
                     "summary_preview": full_summary[:80] if full_summary else "",
+                    "share_path": f"{safe}/{fid}",
                 })
             except Exception:
                 continue
-    else:
-        for fname in sorted(os.listdir(HISTORY_DIR), reverse=True):
-            if not fname.endswith(".json"):
-                continue
-            fpath = os.path.join(HISTORY_DIR, fname)
-            try:
-                with open(fpath, "r", encoding="utf-8") as f:
-                    rec = json.load(f)
-                full_summary = rec.get("summary", "")
-                items.append({
-                    "id": fname.replace(".json", ""),
-                    "address": rec.get("address_display", ""),
-                    "custom_title": rec.get("custom_title", ""),
-                    "lat": rec.get("lat"),
-                    "lng": rec.get("lng"),
-                    "radius_m": rec.get("radius_m"),
-                    "score": rec.get("score"),
-                    "convenience_score": rec.get("convenience_score"),
-                    "recommend_thumbs": rec.get("recommend_thumbs"),
-                    "thumbs_display": rec.get("thumbs_display"),
-                    "total_count": rec.get("total_count"),
-                    "created_at": rec.get("created_at", ""),
-                    "summary_preview": full_summary[:80] if full_summary else "",
-                })
-            except Exception:
-                continue
+    elif prefix:
+        user_dir = os.path.join(HISTORY_DIR, "users", safe)
+        if os.path.isdir(user_dir):
+            for fname in sorted(os.listdir(user_dir), reverse=True):
+                if not fname.endswith(".json"):
+                    continue
+                fpath = os.path.join(user_dir, fname)
+                try:
+                    with open(fpath, "r", encoding="utf-8") as f:
+                        rec = json.load(f)
+                    fid = fname.replace(".json", "")
+                    full_summary = rec.get("summary", "")
+                    items.append({
+                        "id": fid,
+                        "address": rec.get("address_display", ""),
+                        "custom_title": rec.get("custom_title", ""),
+                        "lat": rec.get("lat"),
+                        "lng": rec.get("lng"),
+                        "radius_m": rec.get("radius_m"),
+                        "score": rec.get("score"),
+                        "convenience_score": rec.get("convenience_score"),
+                        "recommend_thumbs": rec.get("recommend_thumbs"),
+                        "thumbs_display": rec.get("thumbs_display"),
+                        "total_count": rec.get("total_count"),
+                        "created_at": rec.get("created_at", ""),
+                        "summary_preview": full_summary[:80] if full_summary else "",
+                        "share_path": f"{safe}/{fid}",
+                    })
+                except Exception:
+                    continue
     limit = request.args.get("limit", type=int)
     offset = request.args.get("offset", 0, type=int)
     total = len(items)
@@ -949,30 +988,39 @@ def api_history_list():
 
 @app.route("/api/history/<history_id>", methods=["GET"])
 def api_history_load(history_id):
-    """載入指定歷史紀錄的完整資料"""
-    safe_id = os.path.basename(history_id)
-    if GCS_BUCKET:
-        raw = _gcs_read(f"{HISTORY_GCS_PREFIX}/{safe_id}.json")
+    """載入指定歷史紀錄的完整資料（限登入使用者自己的紀錄）"""
+    email = session.get("user_email")
+    if not email:
+        return jsonify({"error": "請先登入", "login_required": True}), 401
+    safe = _safe_email(email)
+    safe_id = os.path.basename(history_id).replace("..", "").strip()
+    if not safe_id.endswith(".json"):
+        safe_id = f"{safe_id}.json"
+    path_gcs = _history_path_for_user(safe, safe_id, for_gcs=True)
+    path_local = _history_path_for_user(safe, safe_id, for_gcs=False)
+    if GCS_BUCKET and path_gcs:
+        raw = _gcs_read(path_gcs)
         if not raw:
             return jsonify({"error": "紀錄不存在"}), 404
         try:
             return jsonify(json.loads(raw))
         except Exception as e:
             return jsonify({"error": str(e)}), 500
-    else:
-        fpath = os.path.join(HISTORY_DIR, f"{safe_id}.json")
-        if not os.path.isfile(fpath):
-            return jsonify({"error": "紀錄不存在"}), 404
+    if path_local and os.path.isfile(path_local):
         try:
-            with open(fpath, "r", encoding="utf-8") as f:
+            with open(path_local, "r", encoding="utf-8") as f:
                 return jsonify(json.load(f))
         except Exception as e:
             return jsonify({"error": str(e)}), 500
+    return jsonify({"error": "紀錄不存在"}), 404
 
 
 @app.route("/api/history", methods=["POST"])
 def api_history_save():
-    """儲存一筆查詢結果到歷史"""
+    """儲存一筆查詢結果到歷史（存到目前登入使用者的空間）"""
+    email = session.get("user_email")
+    if not email:
+        return jsonify({"error": "請先登入", "login_required": True}), 401
     data = request.get_json() or {}
     if not data.get("facilities"):
         return jsonify({"error": "缺少資料"}), 400
@@ -988,20 +1036,85 @@ def api_history_save():
 
     data["created_at"] = now.isoformat()
     data_str = json.dumps(data, ensure_ascii=False, indent=1)
-    if GCS_BUCKET:
-        _gcs_write(f"{HISTORY_GCS_PREFIX}/{history_id}.json", data_str)
+    safe = _safe_email(email)
+    path_gcs = _history_path_for_user(safe, history_id + ".json", for_gcs=True)
+    path_local = _history_path_for_user(safe, history_id + ".json", for_gcs=False)
+    if GCS_BUCKET and path_gcs:
+        _gcs_write(path_gcs, data_str)
+    elif path_local:
+        _atomic_write(path_local, data_str)
     else:
-        fpath = os.path.join(HISTORY_DIR, f"{history_id}.json")
-        _atomic_write(fpath, data_str)
-    return jsonify({"ok": True, "id": history_id})
+        return jsonify({"error": "無法寫入歷史"}), 500
+    share_path = f"{safe}/{history_id}"
+    return jsonify({"ok": True, "id": history_id, "share_path": share_path})
+
+
+@app.route("/api/history/shared/<user_safe>/<path:history_id>", methods=["GET"])
+def api_history_shared(user_safe, history_id):
+    """公開讀取一筆歷史（供分享連結使用，不需登入）"""
+    safe_id = os.path.basename(history_id).replace("..", "").strip()
+    if not safe_id.endswith(".json"):
+        safe_id = f"{safe_id}.json"
+    prefix = _history_user_prefix(user_safe)
+    if not prefix:
+        return jsonify({"error": "紀錄不存在"}), 404
+    if GCS_BUCKET:
+        path = f"{HISTORY_GCS_PREFIX}/{prefix}{safe_id}"
+        raw = _gcs_read(path)
+        if not raw:
+            return jsonify({"error": "紀錄不存在"}), 404
+        try:
+            return jsonify(json.loads(raw))
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+    fpath = os.path.join(HISTORY_DIR, "users", user_safe, safe_id)
+    if not os.path.isfile(fpath):
+        return jsonify({"error": "紀錄不存在"}), 404
+    try:
+        with open(fpath, "r", encoding="utf-8") as f:
+            return jsonify(json.load(f))
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/history/shared/legacy/<path:history_id>", methods=["GET"])
+def api_history_shared_legacy(history_id):
+    """公開讀取一筆歷史（舊版分享連結，從原 history/ 路徑讀取）"""
+    safe_id = os.path.basename(history_id).replace("..", "").strip()
+    if not safe_id.endswith(".json"):
+        safe_id = f"{safe_id}.json"
+    if GCS_BUCKET:
+        raw = _gcs_read(f"{HISTORY_GCS_PREFIX}/{safe_id}")
+        if not raw:
+            return jsonify({"error": "紀錄不存在"}), 404
+        try:
+            return jsonify(json.loads(raw))
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+    fpath = os.path.join(HISTORY_DIR, safe_id)
+    if not os.path.isfile(fpath):
+        return jsonify({"error": "紀錄不存在"}), 404
+    try:
+        with open(fpath, "r", encoding="utf-8") as f:
+            return jsonify(json.load(f))
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/api/history/<history_id>/share-text", methods=["GET"])
 def api_history_share_text(history_id):
-    """產生可分享的純文字摘要"""
-    safe_id = os.path.basename(history_id)
-    if GCS_BUCKET:
-        raw = _gcs_read(f"{HISTORY_GCS_PREFIX}/{safe_id}.json")
+    """產生可分享的純文字摘要（限登入使用者自己的紀錄）"""
+    email = session.get("user_email")
+    if not email:
+        return jsonify({"error": "請先登入", "login_required": True}), 401
+    safe = _safe_email(email)
+    safe_id = os.path.basename(history_id).replace("..", "").strip()
+    if not safe_id.endswith(".json"):
+        safe_id = f"{safe_id}.json"
+    path_gcs = _history_path_for_user(safe, safe_id, for_gcs=True)
+    path_local = _history_path_for_user(safe, safe_id, for_gcs=False)
+    if GCS_BUCKET and path_gcs:
+        raw = _gcs_read(path_gcs)
         if not raw:
             return jsonify({"error": "紀錄不存在"}), 404
         try:
@@ -1009,56 +1122,66 @@ def api_history_share_text(history_id):
             return jsonify({"text": rec.get("summary", ""), "address": rec.get("address_display", "")})
         except Exception as e:
             return jsonify({"error": str(e)}), 500
-    else:
-        fpath = os.path.join(HISTORY_DIR, f"{safe_id}.json")
-        if not os.path.isfile(fpath):
-            return jsonify({"error": "紀錄不存在"}), 404
+    if path_local and os.path.isfile(path_local):
         try:
-            with open(fpath, "r", encoding="utf-8") as f:
+            with open(path_local, "r", encoding="utf-8") as f:
                 rec = json.load(f)
             return jsonify({"text": rec.get("summary", ""), "address": rec.get("address_display", "")})
         except Exception as e:
             return jsonify({"error": str(e)}), 500
+    return jsonify({"error": "紀錄不存在"}), 404
 
 
 @app.route("/api/history/<history_id>", methods=["PATCH"])
 def api_history_rename(history_id):
-    """修改歷史紀錄的自訂名稱"""
-    safe_id = os.path.basename(history_id)
+    """修改歷史紀錄的自訂名稱（限登入使用者自己的紀錄）"""
+    email = session.get("user_email")
+    if not email:
+        return jsonify({"error": "請先登入", "login_required": True}), 401
+    safe = _safe_email(email)
+    safe_id = os.path.basename(history_id).replace("..", "").strip()
+    if not safe_id.endswith(".json"):
+        safe_id = f"{safe_id}.json"
     body = request.get_json() or {}
     new_title = (body.get("title") or "").strip()
-
-    if GCS_BUCKET:
-        raw = _gcs_read(f"{HISTORY_GCS_PREFIX}/{safe_id}.json")
+    path_gcs = _history_path_for_user(safe, safe_id, for_gcs=True)
+    path_local = _history_path_for_user(safe, safe_id, for_gcs=False)
+    if GCS_BUCKET and path_gcs:
+        raw = _gcs_read(path_gcs)
         if not raw:
             return jsonify({"error": "紀錄不存在"}), 404
         rec = json.loads(raw)
         rec["custom_title"] = new_title
-        _gcs_write(f"{HISTORY_GCS_PREFIX}/{safe_id}.json", json.dumps(rec, ensure_ascii=False, indent=1))
-    else:
-        fpath = os.path.join(HISTORY_DIR, f"{safe_id}.json")
-        if not os.path.isfile(fpath):
-            return jsonify({"error": "紀錄不存在"}), 404
-        with open(fpath, "r", encoding="utf-8") as f:
+        _gcs_write(path_gcs, json.dumps(rec, ensure_ascii=False, indent=1))
+    elif path_local and os.path.isfile(path_local):
+        with open(path_local, "r", encoding="utf-8") as f:
             rec = json.load(f)
         rec["custom_title"] = new_title
-        _atomic_write(fpath, json.dumps(rec, ensure_ascii=False, indent=1))
+        _atomic_write(path_local, json.dumps(rec, ensure_ascii=False, indent=1))
+    else:
+        return jsonify({"error": "紀錄不存在"}), 404
     return jsonify({"ok": True, "title": new_title})
 
 
 @app.route("/api/history/<history_id>", methods=["DELETE"])
 def api_history_delete(history_id):
-    """刪除一筆歷史紀錄"""
-    safe_id = os.path.basename(history_id)
-    if GCS_BUCKET:
-        _gcs_delete(f"{HISTORY_GCS_PREFIX}/{safe_id}.json")
+    """刪除一筆歷史紀錄（限登入使用者自己的紀錄）"""
+    email = session.get("user_email")
+    if not email:
+        return jsonify({"error": "請先登入", "login_required": True}), 401
+    safe = _safe_email(email)
+    safe_id = os.path.basename(history_id).replace("..", "").strip()
+    if not safe_id.endswith(".json"):
+        safe_id = f"{safe_id}.json"
+    path_gcs = _history_path_for_user(safe, safe_id, for_gcs=True)
+    path_local = _history_path_for_user(safe, safe_id, for_gcs=False)
+    if GCS_BUCKET and path_gcs:
+        _gcs_delete(path_gcs)
         return jsonify({"ok": True})
-    else:
-        fpath = os.path.join(HISTORY_DIR, f"{safe_id}.json")
-        if os.path.isfile(fpath):
-            os.remove(fpath)
-            return jsonify({"ok": True})
-        return jsonify({"error": "紀錄不存在"}), 404
+    if path_local and os.path.isfile(path_local):
+        os.remove(path_local)
+        return jsonify({"ok": True})
+    return jsonify({"error": "紀錄不存在"}), 404
 
 
 @app.route("/api/search-gemini", methods=["POST"])
