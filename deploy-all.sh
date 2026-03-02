@@ -36,10 +36,17 @@ TONGYI_API_KEY="${TONGYI_API_KEY:-}"
 SURVEY_API_URL="${SURVEY_API_URL:-$SURVEY_URL}"
 GCS_BUCKET="${GCS_BUCKET:-}"
 PORTAL_TITLE="${PORTAL_TITLE:-房仲 AI 工具平台}"
+# 還原版 Portal：物件庫在 GCS 的前綴（可選，預設 properties）
+PROPERTIES_GCS_PREFIX="${PROPERTIES_GCS_PREFIX:-properties}"
 
 if [ -z "$GCS_BUCKET" ]; then
   echo "⚠️  警告：GCS_BUCKET 未設定。歷史與物件資料將存在容器內，每次改版部署後都會清空。"
   echo "    若需永久保留歷史，請在 .env 中設定 GCS_BUCKET（例如：real-estate-survey-data-0393195862）。"
+  echo ""
+fi
+# 還原版 Portal 在生產環境必須設定 FLASK_SECRET_KEY
+if [ -z "$FLASK_SECRET_KEY" ]; then
+  echo "⚠️  警告：FLASK_SECRET_KEY 未設定。還原版 Portal 在生產環境會拒絕啟動，請在 .env 設定後再部署。"
   echo ""
 fi
 
@@ -48,11 +55,11 @@ echo "PORTAL_URL=$PORTAL_URL"
 echo "SERVICE_API_KEY 已設定（長度 ${#SERVICE_API_KEY}）"
 echo ""
 
-# 1. Portal（點數制：FREE_POINTS=新用戶預設點數）
+# 1. Portal（點數制：FREE_POINTS=新用戶預設點數，PROPERTIES_GCS_PREFIX=物件庫在 GCS 前綴）
 echo "========== 部署 Portal =========="
 cd "$PROJECTS_ROOT/real-estate-portal"
 gcloud run deploy real-estate-portal --source . --region "$REGION" --allow-unauthenticated \
-  --set-env-vars "SERVICE_API_KEY=$SERVICE_API_KEY,PORTAL_URL=$PORTAL_URL,SURVEY_URL=$SURVEY_URL,AD_URL=$AD_URL,GOOGLE_OAUTH_CLIENT_ID=$GOOGLE_OAUTH_CLIENT_ID,ADMIN_EMAILS=$ADMIN_EMAILS,FLASK_SECRET_KEY=$FLASK_SECRET_KEY,FREE_POINTS=$FREE_POINTS,GCS_BUCKET=$GCS_BUCKET,PORTAL_TITLE=$PORTAL_TITLE" \
+  --set-env-vars "SERVICE_API_KEY=$SERVICE_API_KEY,PORTAL_URL=$PORTAL_URL,SURVEY_URL=$SURVEY_URL,AD_URL=$AD_URL,GOOGLE_OAUTH_CLIENT_ID=$GOOGLE_OAUTH_CLIENT_ID,ADMIN_EMAILS=$ADMIN_EMAILS,FLASK_SECRET_KEY=$FLASK_SECRET_KEY,FREE_POINTS=$FREE_POINTS,GCS_BUCKET=$GCS_BUCKET,PORTAL_TITLE=$PORTAL_TITLE,PROPERTIES_GCS_PREFIX=$PROPERTIES_GCS_PREFIX" \
   --quiet
 echo "Portal 部署完成"
 echo ""
