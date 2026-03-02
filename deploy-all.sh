@@ -21,6 +21,10 @@ fi
 PORTAL_URL="${PORTAL_URL:-https://real-estate-portal-334765337861.asia-east1.run.app}"
 SURVEY_URL="${SURVEY_URL:-https://real-estate-survey-334765337861.asia-east1.run.app}"
 AD_URL="${AD_URL:-https://real-estate-ad-334765337861.asia-east1.run.app}"
+# 若 .env 把 URL 設成空字串，仍用預設，避免 Portal 進不去 Survey/AD
+[ -z "$SURVEY_URL" ] && SURVEY_URL="https://real-estate-survey-334765337861.asia-east1.run.app"
+[ -z "$AD_URL" ] && AD_URL="https://real-estate-ad-334765337861.asia-east1.run.app"
+[ -z "$PORTAL_URL" ] && PORTAL_URL="https://real-estate-portal-334765337861.asia-east1.run.app"
 GOOGLE_OAUTH_CLIENT_ID="${GOOGLE_OAUTH_CLIENT_ID:-}"
 ADMIN_EMAILS="${ADMIN_EMAILS:-}"
 FLASK_SECRET_KEY="${FLASK_SECRET_KEY:-}"
@@ -52,6 +56,8 @@ fi
 
 echo "使用 REGION=$REGION"
 echo "PORTAL_URL=$PORTAL_URL"
+echo "SURVEY_URL=$SURVEY_URL"
+echo "AD_URL=$AD_URL"
 echo "SERVICE_API_KEY 已設定（長度 ${#SERVICE_API_KEY}）"
 echo ""
 
