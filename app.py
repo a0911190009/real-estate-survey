@@ -509,28 +509,35 @@ def auth_portal_login():
         payload = TOKEN_SERIALIZER.loads(token, salt="portal-sso", max_age=TOKEN_MAX_AGE)
     except (SignatureExpired, BadSignature):
         return redirect(PORTAL_URL or "/")
+    except Exception as e:
+        logging.exception("portal-login token load failed: %s", e)
+        return redirect(PORTAL_URL or "/")
 
     email = payload.get("email", "")
     if not email:
         return redirect(PORTAL_URL or "/")
 
-    from datetime import datetime
-    user = _load_user(email) or {
-        "email": email, "name": payload.get("name", ""), "picture": payload.get("picture", ""),
-        "first_login": datetime.now().isoformat(), "plan": "free",
-        "usage": {"search_count": 0},
-    }
-    user["last_login"] = datetime.now().isoformat()
-    _save_user(user)
+    try:
+        from datetime import datetime
+        user = _load_user(email) or {
+            "email": email, "name": payload.get("name", ""), "picture": payload.get("picture", ""),
+            "first_login": datetime.now().isoformat(), "plan": "free",
+            "usage": {"search_count": 0},
+        }
+        user["last_login"] = datetime.now().isoformat()
+        _save_user(user)
 
-    session["user_email"] = email
-    session["user_name"] = payload.get("name", "")
-    session["user_picture"] = payload.get("picture", "")
+        session["user_email"] = email
+        session["user_name"] = payload.get("name", "")
+        session["user_picture"] = payload.get("picture", "")
 
-    next_url = request.args.get("next", "/")
-    if not next_url.startswith("/"):
-        next_url = "/"
-    return redirect(next_url)
+        next_url = request.args.get("next", "/")
+        if not next_url.startswith("/"):
+            next_url = "/"
+        return redirect(next_url)
+    except Exception as e:
+        logging.exception("portal-login session setup failed: %s", e)
+        return redirect(PORTAL_URL or "/")
 
 
 FEEDBACK_ADMIN_PAGE = """
