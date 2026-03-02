@@ -536,6 +536,31 @@ def auth_logout():
     return jsonify({"ok": True})
 
 
+@app.route("/auth/portal-return-token")
+def auth_portal_return_token():
+    """向 Portal 申請回家 token，讓使用者免重新登入直接回入口。"""
+    email = session.get("user_email")
+    if not email or not PORTAL_URL or not SERVICE_API_KEY:
+        return jsonify({"portal_url": PORTAL_URL or "/"})
+    try:
+        import requests as _req
+        r = _req.get(
+            f"{PORTAL_URL.rstrip('/')}/auth/return-token",
+            params={"email": email},
+            headers={"X-Service-Key": SERVICE_API_KEY},
+            timeout=5,
+        )
+        if r.status_code == 200:
+            data = r.json()
+            token = data.get("token", "")
+            if token:
+                from urllib.parse import quote as _quote
+                return jsonify({"portal_url": f"{PORTAL_URL.rstrip('/')}/auth/home-login?token={_quote(token, safe='')}"})
+    except Exception:
+        pass
+    return jsonify({"portal_url": PORTAL_URL})
+
+
 @app.route("/auth/portal-login")
 def auth_portal_login():
     """Accept a signed token from Portal and create a local session."""

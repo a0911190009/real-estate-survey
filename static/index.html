@@ -863,7 +863,7 @@
       <span class="usage-badge" id="user-usage"></span>
       <button onclick="doLogout()" title="登出">登出</button>
     </div>
-    <a class="portal-btn hidden" id="portal-btn" href="/" title="回到工具平台">🏠 入口</a>
+    <button class="portal-btn hidden" id="portal-btn" onclick="goPortal()" title="回到工具平台">🏠 入口</button>
     <button class="history-btn" id="history-btn" title="查詢歷史">📋 歷史</button>
     <button class="theme-toggle" id="theme-toggle" title="切換明暗模式">🌙 暗色</button>
   </div>
@@ -1056,6 +1056,21 @@
       });
     }
 
+    function goPortal() {
+      fetch("/auth/portal-return-token")
+        .then(r => r.json())
+        .then(data => {
+          if (data.portal_url) {
+            window.location.href = data.portal_url;
+          }
+        })
+        .catch(() => {
+          if (_portalUrl) window.location.href = _portalUrl;
+        });
+    }
+
+    let _portalUrl = "";
+
     (function initAuth() {
       if (_isSharedView) {
         document.getElementById("login-overlay").classList.add("hidden");
@@ -1063,8 +1078,8 @@
       }
       fetch("/api/config").then(r => r.json()).then(cfg => {
         if (cfg.portal_url) {
+          _portalUrl = cfg.portal_url;
           const pb = document.getElementById("portal-btn");
-          pb.href = cfg.portal_url;
           pb.classList.remove("hidden");
           const pl = document.getElementById("portal-login-link");
           if (pl) pl.href = cfg.portal_url;

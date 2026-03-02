@@ -20,20 +20,20 @@ if [ -z "${SERVICE_API_KEY}" ]; then
   echo "❌ 錯誤：SERVICE_API_KEY 未設定。請在 .env 中設定或 export SERVICE_API_KEY=..." >&2
   exit 1
 fi
-PORTAL_URL="${PORTAL_URL:-https://real-estate-portal-334765337861.asia-east1.run.app}"
-SURVEY_URL="${SURVEY_URL:-https://real-estate-survey-334765337861.asia-east1.run.app}"
-AD_URL="${AD_URL:-https://real-estate-ad-334765337861.asia-east1.run.app}"
+PORTAL_URL="${PORTAL_URL:-https://real-estate-portal-gfhs6o2seq-de.a.run.app}"
+SURVEY_URL="${SURVEY_URL:-https://real-estate-survey-gfhs6o2seq-de.a.run.app}"
+AD_URL="${AD_URL:-https://real-estate-ad-gfhs6o2seq-de.a.run.app}"
 # 若 .env 把 URL 設成空字串，仍用預設，避免 Portal 進不去 Survey/AD
-[ -z "$SURVEY_URL" ] && SURVEY_URL="https://real-estate-survey-334765337861.asia-east1.run.app"
-[ -z "$AD_URL" ] && AD_URL="https://real-estate-ad-334765337861.asia-east1.run.app"
-[ -z "$PORTAL_URL" ] && PORTAL_URL="https://real-estate-portal-334765337861.asia-east1.run.app"
+[ -z "$SURVEY_URL" ] && SURVEY_URL="https://real-estate-survey-gfhs6o2seq-de.a.run.app"
+[ -z "$AD_URL" ] && AD_URL="https://real-estate-ad-gfhs6o2seq-de.a.run.app"
+[ -z "$PORTAL_URL" ] && PORTAL_URL="https://real-estate-portal-gfhs6o2seq-de.a.run.app"
 LIBRARY_URL="${LIBRARY_URL:-}"
-[ -z "$LIBRARY_URL" ] && LIBRARY_URL="https://real-estate-library-334765337861.asia-east1.run.app"
+[ -z "$LIBRARY_URL" ] && LIBRARY_URL="https://real-estate-library-gfhs6o2seq-de.a.run.app"
 FREE_LIBRARY_LIMIT="${FREE_LIBRARY_LIMIT:-3}"
 GOOGLE_OAUTH_CLIENT_ID="${GOOGLE_OAUTH_CLIENT_ID:-}"
 ADMIN_EMAILS="${ADMIN_EMAILS:-}"
 FLASK_SECRET_KEY="${FLASK_SECRET_KEY:-}"
-FREE_POINTS="${FREE_POINTS:-10}"
+FREE_POINTS="${FREE_POINTS:-20}"
 GOOGLE_API_KEY="${GOOGLE_API_KEY:-}"
 GOOGLE_MAPS_API_KEY="${GOOGLE_MAPS_API_KEY:-}"
 OPENAI_API_KEY="${OPENAI_API_KEY:-}"
