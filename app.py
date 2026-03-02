@@ -205,14 +205,23 @@ def _load_feedback():
 _feedback_lock = threading.Lock()
 
 
+def _atomic_write(fpath, data_str):
+    """原子寫入：先寫 .tmp，fsync 後再 os.replace，讀取時永遠是完整檔案。"""
+    tmp = fpath + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.write(data_str)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, fpath)
+
+
 def _save_feedback(data):
     data_str = json.dumps(data, ensure_ascii=False, indent=2)
     with _feedback_lock:
         if GCS_BUCKET:
             _gcs_write("feedback.json", data_str)
         else:
-            with open(FEEDBACK_FILE, "w", encoding="utf-8") as f:
-                f.write(data_str)
+            _atomic_write(FEEDBACK_FILE, data_str)
 
 
 def _apply_feedback(result):
@@ -331,8 +340,7 @@ def _save_user(user_data):
         _gcs_write(f"users/{safe}.json", data_str)
     else:
         fpath = os.path.join(USERS_DIR, f"{safe}.json")
-        with open(fpath, "w", encoding="utf-8") as f:
-            f.write(data_str)
+        _atomic_write(fpath, data_str)
 
 
 def _is_admin(email):
@@ -772,8 +780,7 @@ def api_general_feedback():
     if GCS_BUCKET:
         _gcs_write("general_feedback.json", data_str)
     else:
-        with open(GENERAL_FEEDBACK_FILE, "w", encoding="utf-8") as f:
-            f.write(data_str)
+        _atomic_write(GENERAL_FEEDBACK_FILE, data_str)
     return jsonify({"ok": True, "total": len(entries)})
 
 
@@ -985,8 +992,7 @@ def api_history_save():
         _gcs_write(f"{HISTORY_GCS_PREFIX}/{history_id}.json", data_str)
     else:
         fpath = os.path.join(HISTORY_DIR, f"{history_id}.json")
-        with open(fpath, "w", encoding="utf-8") as f:
-            f.write(data_str)
+        _atomic_write(fpath, data_str)
     return jsonify({"ok": True, "id": history_id})
 
 
@@ -1036,8 +1042,7 @@ def api_history_rename(history_id):
         with open(fpath, "r", encoding="utf-8") as f:
             rec = json.load(f)
         rec["custom_title"] = new_title
-        with open(fpath, "w", encoding="utf-8") as f:
-            json.dump(rec, f, ensure_ascii=False, indent=1)
+        _atomic_write(fpath, json.dumps(rec, ensure_ascii=False, indent=1))
     return jsonify({"ok": True, "title": new_title})
 
 
