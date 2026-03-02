@@ -838,9 +838,14 @@ def api_search():
         return jsonify({"error": reason_or_data or "用量已達上限", "usage_exceeded": True}), 403
 
     if reason_or_data is None and user and not _is_admin(email):
+        points = int(user.get("points", user.get("balance_uses", 0) or 0))
+        if points < 1:
+            return jsonify({"error": "點數不足，請至入口儲值。", "usage_exceeded": True}), 403
+        user["points"] = points - 1
         usage = user.get("usage", {})
-        if usage.get("search_count", 0) >= FREE_SEARCH_LIMIT:
-            return jsonify({"error": f"已達免費查詢上限（{FREE_SEARCH_LIMIT} 次）。請聯繫管理員升級帳號。", "usage_exceeded": True}), 403
+        usage["search_count"] = usage.get("search_count", 0) + 1
+        user["usage"] = usage
+        _save_user(user)
 
     data = request.get_json() or {}
     lat = data.get("lat")
@@ -911,10 +916,18 @@ def api_refresh_summary():
 
 @app.route("/api/history", methods=["GET"])
 def api_history_list():
-    """列出目前登入使用者的歷史紀錄（僅摘要）。未登入回傳 401。"""
-    email = session.get("user_email")
-    if not email:
-        return jsonify({"error": "請先登入", "login_required": True}), 401
+    """列出目前登入使用者的歷史紀錄（僅摘要）。未登入回傳 401。
+    後端服務可帶 X-Service-Key header 與 email 查詢參數來存取任意用戶資料。"""
+    import hmac as _hmac
+    svc_key = request.headers.get("X-Service-Key", "")
+    if SERVICE_API_KEY and svc_key and _hmac.compare_digest(svc_key, SERVICE_API_KEY):
+        email = (request.args.get("email") or "").strip()
+        if not email:
+            return jsonify({"error": "缺少 email"}), 400
+    else:
+        email = session.get("user_email")
+        if not email:
+            return jsonify({"error": "請先登入", "login_required": True}), 401
     safe = _safe_email(email)
     prefix = _history_user_prefix(safe)
     items = []
@@ -988,10 +1001,18 @@ def api_history_list():
 
 @app.route("/api/history/<history_id>", methods=["GET"])
 def api_history_load(history_id):
-    """載入指定歷史紀錄的完整資料（限登入使用者自己的紀錄）"""
-    email = session.get("user_email")
-    if not email:
-        return jsonify({"error": "請先登入", "login_required": True}), 401
+    """載入指定歷史紀錄的完整資料（限登入使用者自己的紀錄）。
+    後端服務可帶 X-Service-Key header 與 email 查詢參數存取。"""
+    import hmac as _hmac
+    svc_key = request.headers.get("X-Service-Key", "")
+    if SERVICE_API_KEY and svc_key and _hmac.compare_digest(svc_key, SERVICE_API_KEY):
+        email = (request.args.get("email") or "").strip()
+        if not email:
+            return jsonify({"error": "缺少 email"}), 400
+    else:
+        email = session.get("user_email")
+        if not email:
+            return jsonify({"error": "請先登入", "login_required": True}), 401
     safe = _safe_email(email)
     safe_id = os.path.basename(history_id).replace("..", "").strip()
     if not safe_id.endswith(".json"):
