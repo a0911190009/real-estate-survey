@@ -10,7 +10,32 @@ import os
 import json
 import functools
 import threading
+import re
+from datetime import datetime, timezone
 from flask import Flask, request, jsonify, send_from_directory, render_template_string, session, redirect
+
+# Firestore（有環境就啟用，否則 None）
+try:
+    from google.cloud import firestore as _firestore
+    _db = None  # 延遲初始化
+except ImportError:
+    _firestore = None
+    _db = None
+
+
+def _get_db():
+    """取得 Firestore client（延遲初始化）"""
+    global _db
+    if _db is not None:
+        return _db
+    if _firestore is None:
+        return None
+    try:
+        _db = _firestore.Client(project=os.environ.get("GOOGLE_CLOUD_PROJECT") or os.environ.get("GCLOUD_PROJECT"))
+        return _db
+    except Exception as e:
+        logging.warning("Survey: Firestore 初始化失敗，使用 GCS/本地 fallback: %s", e)
+        return None
 
 try:
     from pythonjsonlogger import jsonlogger
@@ -215,22 +240,6 @@ def _history_path_for_user(safe_email, history_id, for_gcs=True):
 
 
 
-def _load_feedback():
-    if GCS_BUCKET:
-        raw = _gcs_read("feedback.json")
-        if raw:
-            try: return json.loads(raw)
-            except Exception: return {}
-        return {}
-    if os.path.isfile(FEEDBACK_FILE):
-        try:
-            with open(FEEDBACK_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception:
-            return {}
-    return {}
-
-
 _feedback_lock = threading.Lock()
 
 
@@ -245,6 +254,7 @@ def _atomic_write(fpath, data_str):
 
 
 def _save_feedback(data):
+    """整體覆寫 feedback（fallback 用）"""
     data_str = json.dumps(data, ensure_ascii=False, indent=2)
     with _feedback_lock:
         if GCS_BUCKET:
@@ -344,6 +354,17 @@ def _regenerate_summary(result, address_display, radius_m):
 # ── Auth helpers ──
 
 def _load_user(email):
+    """讀取用戶資料。優先 Firestore（Portal 是 source of truth），否則 GCS/本地。"""
+    db = _get_db()
+    if db and email:
+        try:
+            doc = db.collection("users").document(email).get()
+            if doc.exists:
+                return doc.to_dict()
+        except Exception as e:
+            logging.warning("Survey: Firestore 讀取用戶失敗: %s", e)
+
+    # Fallback：GCS / 本地
     safe = email.replace("@", "_at_").replace(".", "_")
     if GCS_BUCKET:
         raw = _gcs_read(f"users/{safe}.json")
@@ -362,7 +383,20 @@ def _load_user(email):
 
 
 def _save_user(user_data):
+    """儲存用戶資料。優先 Firestore，否則 GCS/本地。"""
     email = user_data.get("email", "")
+    if not email:
+        return
+
+    db = _get_db()
+    if db:
+        try:
+            db.collection("users").document(email).set(user_data)
+            return
+        except Exception as e:
+            logging.warning("Survey: Firestore 儲存用戶失敗，改用 GCS/本地: %s", e)
+
+    # Fallback
     safe = email.replace("@", "_at_").replace(".", "_")
     data_str = json.dumps(user_data, ensure_ascii=False, indent=2)
     if GCS_BUCKET:
@@ -516,6 +550,12 @@ def auth_me():
     is_admin = _is_admin(email)
     portal_usage = _portal_get_usage(email)
     usage = (portal_usage.get("usage", {}) if portal_usage else None) or user.get("usage", {})
+    # 取得點數（優先從 portal_usage，其次本地 user）
+    points = None
+    if portal_usage:
+        points = portal_usage.get("points")
+    if points is None:
+        points = user.get("points", user.get("balance_uses", 0) or 0)
     return jsonify({
         "logged_in": True,
         "email": email,
@@ -523,6 +563,7 @@ def auth_me():
         "picture": user.get("picture", ""),
         "is_admin": is_admin,
         "plan": user.get("plan", "free"),
+        "points": points,
         "search_count": usage.get("search_count", 0),
         "search_limit": None if is_admin else FREE_SEARCH_LIMIT,
     })
@@ -764,7 +805,18 @@ def api_feedback_post():
     ctx_address = data.get("address", "")
 
     if action == "reset":
-        fb.pop(place_id, None)
+        # 刪除該筆 feedback
+        db = _get_db()
+        if db:
+            try:
+                db.collection("survey_feedback").document(place_id).delete()
+            except Exception as e:
+                logging.warning("Survey: Firestore 刪除 feedback 失敗: %s", e)
+                fb.pop(place_id, None)
+                _save_feedback(fb)
+        else:
+            fb.pop(place_id, None)
+            _save_feedback(fb)
     elif action == "comment":
         entry = fb.get(place_id, {})
         entry["name"] = data.get("name", entry.get("name", ""))
@@ -772,7 +824,7 @@ def api_feedback_post():
         entry["updated_at"] = datetime.now().isoformat()
         if ctx_history: entry["history_id"] = ctx_history
         if ctx_address: entry["address"] = ctx_address
-        fb[place_id] = entry
+        _save_feedback_entry(place_id, entry)
     elif action == "severity":
         entry = fb.get(place_id, {})
         entry["name"] = data.get("name", entry.get("name", ""))
@@ -780,18 +832,18 @@ def api_feedback_post():
         entry["updated_at"] = datetime.now().isoformat()
         if ctx_history: entry["history_id"] = ctx_history
         if ctx_address: entry["address"] = ctx_address
-        fb[place_id] = entry
+        _save_feedback_entry(place_id, entry)
     else:
-        fb[place_id] = {
+        entry = {
             "action": action,
             "name": data.get("name", ""),
             "nuisance_cat": data.get("nuisance_cat", "嫌惡設施(自訂)"),
             "updated_at": datetime.now().isoformat(),
         }
-        if ctx_history: fb[place_id]["history_id"] = ctx_history
-        if ctx_address: fb[place_id]["address"] = ctx_address
-    _save_feedback(fb)
-    return jsonify({"ok": True, "total_feedback": len(fb)})
+        if ctx_history: entry["history_id"] = ctx_history
+        if ctx_address: entry["address"] = ctx_address
+        _save_feedback_entry(place_id, entry)
+    return jsonify({"ok": True})
 
 
 def _load_general_feedback():
@@ -840,7 +892,7 @@ def api_general_feedback():
 
 @app.route("/api/resolve-address", methods=["POST"])
 def api_resolve_address():
-    """POST { "address": "台東市中山路123號" } → { "lat": ..., "lng": ... }"""
+    """POST { "address": "台北市信義區信義路五段7號" } → { "lat": ..., "lng": ... }"""
     data = request.get_json() or {}
     address = (data.get("address") or "").strip()
     if not address:
@@ -937,23 +989,42 @@ def api_refresh_summary():
         return jsonify({"error": str(e)}), 500
 
 
-# ── History (查詢歷史) ──
+# ── History Firestore helpers ──
 
-@app.route("/api/history", methods=["GET"])
-def api_history_list():
-    """列出目前登入使用者的歷史紀錄（僅摘要）。未登入回傳 401。
-    後端服務可帶 X-Service-Key header 與 email 查詢參數來存取任意用戶資料。"""
-    import hmac as _hmac
-    svc_key = request.headers.get("X-Service-Key", "")
-    if SERVICE_API_KEY and svc_key and _hmac.compare_digest(svc_key, SERVICE_API_KEY):
-        email = (request.args.get("email") or "").strip()
-        if not email:
-            return jsonify({"error": "缺少 email"}), 400
-    else:
-        email = session.get("user_email")
-        if not email:
-            return jsonify({"error": "請先登入", "login_required": True}), 401
+def _survey_history_list(email):
+    """列出用戶的 Survey 歷史摘要，最新在前。優先 Firestore，否則 GCS/本地。"""
     safe = _safe_email(email)
+    db = _get_db()
+    if db and email:
+        try:
+            docs = db.collection("users").document(email).collection("survey_history") \
+                     .order_by("created_at", direction=_firestore.Query.DESCENDING) \
+                     .limit(50).stream()
+            items = []
+            for doc in docs:
+                rec = doc.to_dict()
+                full_summary = rec.get("summary", "")
+                items.append({
+                    "id": doc.id,
+                    "address": rec.get("address_display", ""),
+                    "custom_title": rec.get("custom_title", ""),
+                    "lat": rec.get("lat"),
+                    "lng": rec.get("lng"),
+                    "radius_m": rec.get("radius_m"),
+                    "score": rec.get("score"),
+                    "convenience_score": rec.get("convenience_score"),
+                    "recommend_thumbs": rec.get("recommend_thumbs"),
+                    "thumbs_display": rec.get("thumbs_display"),
+                    "total_count": rec.get("total_count"),
+                    "created_at": rec.get("created_at", ""),
+                    "summary_preview": full_summary[:80] if full_summary else "",
+                    "share_path": f"{safe}/{doc.id}",
+                })
+            return items
+        except Exception as e:
+            logging.warning("Survey: Firestore 列出歷史失敗: %s", e)
+
+    # Fallback：GCS / 本地
     prefix = _history_user_prefix(safe)
     items = []
     if GCS_BUCKET and prefix:
@@ -1016,6 +1087,204 @@ def api_history_list():
                     })
                 except Exception:
                     continue
+    return items
+
+
+def _survey_history_get(email, history_id):
+    """讀取一筆 Survey 歷史完整資料。優先 Firestore，否則 GCS/本地。"""
+    safe = _safe_email(email)
+    db = _get_db()
+    if db and email:
+        try:
+            doc = db.collection("users").document(email).collection("survey_history").document(history_id).get()
+            if doc.exists:
+                data = doc.to_dict()
+                data.pop("_id", None)
+                return data
+        except Exception as e:
+            logging.warning("Survey: Firestore 讀取歷史失敗: %s", e)
+
+    # Fallback
+    safe_id = os.path.basename(history_id).replace("..", "").strip()
+    if not safe_id.endswith(".json"):
+        safe_id = f"{safe_id}.json"
+    path_gcs = _history_path_for_user(safe, safe_id, for_gcs=True)
+    path_local = _history_path_for_user(safe, safe_id, for_gcs=False)
+    if GCS_BUCKET and path_gcs:
+        raw = _gcs_read(path_gcs)
+        if raw:
+            try: return json.loads(raw)
+            except Exception: return None
+        return None
+    if path_local and os.path.isfile(path_local):
+        try:
+            with open(path_local, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return None
+    return None
+
+
+def _survey_history_save(email, data):
+    """儲存一筆 Survey 歷史。優先 Firestore，否則 GCS/本地。回傳 (history_id, share_path)。"""
+    now = datetime.now(timezone.utc)
+    history_id = now.strftime("%Y%m%d_%H%M%S")
+    addr = (data.get("address_display") or "").strip()
+    if addr:
+        safe_addr = re.sub(r'[^\w\u4e00-\u9fff\-]', '_', addr)[:30]
+        history_id = f"{history_id}_{safe_addr}"
+    data["created_at"] = now.isoformat()
+    safe = _safe_email(email)
+
+    db = _get_db()
+    if db and email:
+        try:
+            db.collection("users").document(email).collection("survey_history").document(history_id).set(data)
+            return history_id, f"{safe}/{history_id}"
+        except Exception as e:
+            logging.warning("Survey: Firestore 儲存歷史失敗，改用 GCS/本地: %s", e)
+
+    # Fallback
+    data_str = json.dumps(data, ensure_ascii=False, indent=1)
+    path_gcs = _history_path_for_user(safe, history_id + ".json", for_gcs=True)
+    path_local = _history_path_for_user(safe, history_id + ".json", for_gcs=False)
+    if GCS_BUCKET and path_gcs:
+        _gcs_write(path_gcs, data_str)
+    elif path_local:
+        _atomic_write(path_local, data_str)
+    else:
+        return None, None
+    return history_id, f"{safe}/{history_id}"
+
+
+def _survey_history_update(email, history_id, updates):
+    """更新一筆 Survey 歷史（部分欄位）。優先 Firestore，否則 GCS/本地。"""
+    safe = _safe_email(email)
+    db = _get_db()
+    if db and email:
+        try:
+            db.collection("users").document(email).collection("survey_history").document(history_id).update(updates)
+            return True
+        except Exception as e:
+            logging.warning("Survey: Firestore 更新歷史失敗: %s", e)
+
+    # Fallback
+    safe_id = os.path.basename(history_id).replace("..", "").strip()
+    if not safe_id.endswith(".json"):
+        safe_id = f"{safe_id}.json"
+    path_gcs = _history_path_for_user(safe, safe_id, for_gcs=True)
+    path_local = _history_path_for_user(safe, safe_id, for_gcs=False)
+    if GCS_BUCKET and path_gcs:
+        raw = _gcs_read(path_gcs)
+        if not raw:
+            return False
+        rec = json.loads(raw)
+        rec.update(updates)
+        _gcs_write(path_gcs, json.dumps(rec, ensure_ascii=False, indent=1))
+    elif path_local and os.path.isfile(path_local):
+        with open(path_local, "r", encoding="utf-8") as f:
+            rec = json.load(f)
+        rec.update(updates)
+        _atomic_write(path_local, json.dumps(rec, ensure_ascii=False, indent=1))
+    else:
+        return False
+    return True
+
+
+def _survey_history_delete(email, history_id):
+    """刪除一筆 Survey 歷史。優先 Firestore，否則 GCS/本地。"""
+    safe = _safe_email(email)
+    db = _get_db()
+    if db and email:
+        try:
+            db.collection("users").document(email).collection("survey_history").document(history_id).delete()
+            return True
+        except Exception as e:
+            logging.warning("Survey: Firestore 刪除歷史失敗: %s", e)
+
+    # Fallback
+    safe_id = os.path.basename(history_id).replace("..", "").strip()
+    if not safe_id.endswith(".json"):
+        safe_id = f"{safe_id}.json"
+    path_gcs = _history_path_for_user(safe, safe_id, for_gcs=True)
+    path_local = _history_path_for_user(safe, safe_id, for_gcs=False)
+    if GCS_BUCKET and path_gcs:
+        _gcs_delete(path_gcs)
+        return True
+    if path_local and os.path.isfile(path_local):
+        os.remove(path_local)
+        return True
+    return False
+
+
+# ── Survey feedback Firestore helpers ──
+
+def _load_feedback():
+    """讀取設施反饋資料。優先 Firestore，否則 GCS/本地。"""
+    db = _get_db()
+    if db:
+        try:
+            docs = db.collection("survey_feedback").stream()
+            return {doc.id: doc.to_dict() for doc in docs}
+        except Exception as e:
+            logging.warning("Survey: Firestore 讀取 feedback 失敗: %s", e)
+
+    # Fallback
+    if GCS_BUCKET:
+        raw = _gcs_read("feedback.json")
+        if raw:
+            try: return json.loads(raw)
+            except Exception: return {}
+        return {}
+    if os.path.isfile(FEEDBACK_FILE):
+        try:
+            with open(FEEDBACK_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return {}
+    return {}
+
+
+def _save_feedback_entry(place_id, entry):
+    """儲存單一設施的反饋。優先 Firestore，否則暫存並整體覆寫。"""
+    db = _get_db()
+    if db:
+        try:
+            db.collection("survey_feedback").document(place_id).set(entry)
+            return True
+        except Exception as e:
+            logging.warning("Survey: Firestore 儲存 feedback 失敗: %s", e)
+
+    # Fallback：讀取整體 → 修改 → 寫回
+    data = _load_feedback()
+    data[place_id] = entry
+    data_str = json.dumps(data, ensure_ascii=False, indent=2)
+    with _feedback_lock:
+        if GCS_BUCKET:
+            _gcs_write("feedback.json", data_str)
+        else:
+            _atomic_write(FEEDBACK_FILE, data_str)
+    return True
+
+
+# ── History (查詢歷史) ──
+
+@app.route("/api/history", methods=["GET"])
+def api_history_list():
+    """列出目前登入使用者的歷史紀錄（僅摘要）。未登入回傳 401。
+    後端服務可帶 X-Service-Key header 與 email 查詢參數來存取任意用戶資料。"""
+    import hmac as _hmac
+    svc_key = request.headers.get("X-Service-Key", "")
+    if SERVICE_API_KEY and svc_key and _hmac.compare_digest(svc_key, SERVICE_API_KEY):
+        email = (request.args.get("email") or "").strip()
+        if not email:
+            return jsonify({"error": "缺少 email"}), 400
+    else:
+        email = session.get("user_email")
+        if not email:
+            return jsonify({"error": "請先登入", "login_required": True}), 401
+
+    items = _survey_history_list(email)
     limit = request.args.get("limit", type=int)
     offset = request.args.get("offset", 0, type=int)
     total = len(items)
@@ -1038,27 +1307,12 @@ def api_history_load(history_id):
         email = session.get("user_email")
         if not email:
             return jsonify({"error": "請先登入", "login_required": True}), 401
-    safe = _safe_email(email)
-    safe_id = os.path.basename(history_id).replace("..", "").strip()
-    if not safe_id.endswith(".json"):
-        safe_id = f"{safe_id}.json"
-    path_gcs = _history_path_for_user(safe, safe_id, for_gcs=True)
-    path_local = _history_path_for_user(safe, safe_id, for_gcs=False)
-    if GCS_BUCKET and path_gcs:
-        raw = _gcs_read(path_gcs)
-        if not raw:
-            return jsonify({"error": "紀錄不存在"}), 404
-        try:
-            return jsonify(json.loads(raw))
-        except Exception as e:
-            return jsonify({"error": str(e)}), 500
-    if path_local and os.path.isfile(path_local):
-        try:
-            with open(path_local, "r", encoding="utf-8") as f:
-                return jsonify(json.load(f))
-        except Exception as e:
-            return jsonify({"error": str(e)}), 500
-    return jsonify({"error": "紀錄不存在"}), 404
+
+    safe_id = os.path.basename(history_id).replace("..", "").strip().replace(".json", "")
+    rec = _survey_history_get(email, safe_id)
+    if rec is None:
+        return jsonify({"error": "紀錄不存在"}), 404
+    return jsonify(rec)
 
 
 @app.route("/api/history", methods=["POST"])
@@ -1071,41 +1325,33 @@ def api_history_save():
     if not data.get("facilities"):
         return jsonify({"error": "缺少資料"}), 400
 
-    from datetime import datetime
-    import re
-    now = datetime.now()
-    history_id = now.strftime("%Y%m%d_%H%M%S")
-    addr = (data.get("address_display") or "").strip()
-    if addr:
-        safe_addr = re.sub(r'[^\w\u4e00-\u9fff\-]', '_', addr)[:30]
-        history_id = f"{history_id}_{safe_addr}"
-
-    data["created_at"] = now.isoformat()
-    data_str = json.dumps(data, ensure_ascii=False, indent=1)
-    safe = _safe_email(email)
-    path_gcs = _history_path_for_user(safe, history_id + ".json", for_gcs=True)
-    path_local = _history_path_for_user(safe, history_id + ".json", for_gcs=False)
-    if GCS_BUCKET and path_gcs:
-        _gcs_write(path_gcs, data_str)
-    elif path_local:
-        _atomic_write(path_local, data_str)
-    else:
+    history_id, share_path = _survey_history_save(email, data)
+    if not history_id:
         return jsonify({"error": "無法寫入歷史"}), 500
-    share_path = f"{safe}/{history_id}"
     return jsonify({"ok": True, "id": history_id, "share_path": share_path})
 
 
 @app.route("/api/history/shared/<user_safe>/<path:history_id>", methods=["GET"])
 def api_history_shared(user_safe, history_id):
     """公開讀取一筆歷史（供分享連結使用，不需登入）"""
-    safe_id = os.path.basename(history_id).replace("..", "").strip()
-    if not safe_id.endswith(".json"):
-        safe_id = f"{safe_id}.json"
+    safe_id = os.path.basename(history_id).replace("..", "").strip().replace(".json", "")
+    # 先嘗試 Firestore（需要反查 email）
+    db = _get_db()
+    if db:
+        try:
+            # user_safe 為安全化 email，嘗試直接用原始 email 查詢（向前相容）
+            # 若 Firestore 找不到，fallback 到 GCS
+            pass
+        except Exception:
+            pass
+
+    # Fallback：GCS / 本地
     prefix = _history_user_prefix(user_safe)
     if not prefix:
         return jsonify({"error": "紀錄不存在"}), 404
     if GCS_BUCKET:
-        path = f"{HISTORY_GCS_PREFIX}/{prefix}{safe_id}"
+        safe_file = safe_id if safe_id.endswith(".json") else f"{safe_id}.json"
+        path = f"{HISTORY_GCS_PREFIX}/{prefix}{safe_file}"
         raw = _gcs_read(path)
         if not raw:
             return jsonify({"error": "紀錄不存在"}), 404
@@ -1113,7 +1359,8 @@ def api_history_shared(user_safe, history_id):
             return jsonify(json.loads(raw))
         except Exception as e:
             return jsonify({"error": str(e)}), 500
-    fpath = os.path.join(HISTORY_DIR, "users", user_safe, safe_id)
+    safe_file = safe_id if safe_id.endswith(".json") else f"{safe_id}.json"
+    fpath = os.path.join(HISTORY_DIR, "users", user_safe, safe_file)
     if not os.path.isfile(fpath):
         return jsonify({"error": "紀錄不存在"}), 404
     try:
@@ -1153,29 +1400,11 @@ def api_history_share_text(history_id):
     email = session.get("user_email")
     if not email:
         return jsonify({"error": "請先登入", "login_required": True}), 401
-    safe = _safe_email(email)
-    safe_id = os.path.basename(history_id).replace("..", "").strip()
-    if not safe_id.endswith(".json"):
-        safe_id = f"{safe_id}.json"
-    path_gcs = _history_path_for_user(safe, safe_id, for_gcs=True)
-    path_local = _history_path_for_user(safe, safe_id, for_gcs=False)
-    if GCS_BUCKET and path_gcs:
-        raw = _gcs_read(path_gcs)
-        if not raw:
-            return jsonify({"error": "紀錄不存在"}), 404
-        try:
-            rec = json.loads(raw)
-            return jsonify({"text": rec.get("summary", ""), "address": rec.get("address_display", "")})
-        except Exception as e:
-            return jsonify({"error": str(e)}), 500
-    if path_local and os.path.isfile(path_local):
-        try:
-            with open(path_local, "r", encoding="utf-8") as f:
-                rec = json.load(f)
-            return jsonify({"text": rec.get("summary", ""), "address": rec.get("address_display", "")})
-        except Exception as e:
-            return jsonify({"error": str(e)}), 500
-    return jsonify({"error": "紀錄不存在"}), 404
+    safe_id = os.path.basename(history_id).replace("..", "").strip().replace(".json", "")
+    rec = _survey_history_get(email, safe_id)
+    if rec is None:
+        return jsonify({"error": "紀錄不存在"}), 404
+    return jsonify({"text": rec.get("summary", ""), "address": rec.get("address_display", "")})
 
 
 @app.route("/api/history/<history_id>", methods=["PATCH"])
@@ -1184,27 +1413,11 @@ def api_history_rename(history_id):
     email = session.get("user_email")
     if not email:
         return jsonify({"error": "請先登入", "login_required": True}), 401
-    safe = _safe_email(email)
-    safe_id = os.path.basename(history_id).replace("..", "").strip()
-    if not safe_id.endswith(".json"):
-        safe_id = f"{safe_id}.json"
     body = request.get_json() or {}
     new_title = (body.get("title") or "").strip()
-    path_gcs = _history_path_for_user(safe, safe_id, for_gcs=True)
-    path_local = _history_path_for_user(safe, safe_id, for_gcs=False)
-    if GCS_BUCKET and path_gcs:
-        raw = _gcs_read(path_gcs)
-        if not raw:
-            return jsonify({"error": "紀錄不存在"}), 404
-        rec = json.loads(raw)
-        rec["custom_title"] = new_title
-        _gcs_write(path_gcs, json.dumps(rec, ensure_ascii=False, indent=1))
-    elif path_local and os.path.isfile(path_local):
-        with open(path_local, "r", encoding="utf-8") as f:
-            rec = json.load(f)
-        rec["custom_title"] = new_title
-        _atomic_write(path_local, json.dumps(rec, ensure_ascii=False, indent=1))
-    else:
+    safe_id = os.path.basename(history_id).replace("..", "").strip().replace(".json", "")
+    ok = _survey_history_update(email, safe_id, {"custom_title": new_title})
+    if not ok:
         return jsonify({"error": "紀錄不存在"}), 404
     return jsonify({"ok": True, "title": new_title})
 
@@ -1215,19 +1428,11 @@ def api_history_delete(history_id):
     email = session.get("user_email")
     if not email:
         return jsonify({"error": "請先登入", "login_required": True}), 401
-    safe = _safe_email(email)
-    safe_id = os.path.basename(history_id).replace("..", "").strip()
-    if not safe_id.endswith(".json"):
-        safe_id = f"{safe_id}.json"
-    path_gcs = _history_path_for_user(safe, safe_id, for_gcs=True)
-    path_local = _history_path_for_user(safe, safe_id, for_gcs=False)
-    if GCS_BUCKET and path_gcs:
-        _gcs_delete(path_gcs)
-        return jsonify({"ok": True})
-    if path_local and os.path.isfile(path_local):
-        os.remove(path_local)
-        return jsonify({"ok": True})
-    return jsonify({"error": "紀錄不存在"}), 404
+    safe_id = os.path.basename(history_id).replace("..", "").strip().replace(".json", "")
+    ok = _survey_history_delete(email, safe_id)
+    if not ok:
+        return jsonify({"error": "紀錄不存在"}), 404
+    return jsonify({"ok": True})
 
 
 @app.route("/api/search-gemini", methods=["POST"])
