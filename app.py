@@ -789,32 +789,46 @@ VALID_THEME_STYLES = ["navy", "forest", "amber", "minimal", "rose", "oled"]
 def api_theme_get():
     """取得全局外觀風格（從 Firestore system_settings/theme 讀取）。"""
     db = _get_db()
-    style = "navy"
+    style, mode = "navy", None
     if db:
         try:
             doc = db.collection("system_settings").document("theme").get()
             if doc.exists:
-                style = doc.to_dict().get("style", "navy")
+                d = doc.to_dict()
+                style = d.get("style", "navy")
+                mode = d.get("mode")
         except Exception:
             pass
-    return jsonify({"style": style})
+    return jsonify({"style": style, "mode": mode})
 
 
 @app.route("/api/theme", methods=["POST"])
-@admin_required
 def api_theme_set():
-    """設定全局外觀風格（僅管理員，寫入 Firestore system_settings/theme）。"""
+    """設定外觀：管理員可改色系(style)，任何登入用戶可改深淺色(mode)。"""
+    email = session.get("user_email", "")
+    if not email:
+        return jsonify({"error": "請先登入"}), 401
     data = request.get_json(silent=True) or {}
-    style = data.get("style", "navy")
-    if style not in VALID_THEME_STYLES:
-        return jsonify({"error": "無效風格"}), 400
-    db = _get_db()
-    if db:
-        try:
-            db.collection("system_settings").document("theme").set({"style": style})
-        except Exception as e:
-            return jsonify({"error": str(e)}), 500
-    return jsonify({"ok": True, "style": style})
+    update = {}
+    if "style" in data:
+        if not _is_admin(email):
+            return jsonify({"error": "無管理權限"}), 403
+        style = data["style"]
+        if style not in VALID_THEME_STYLES:
+            return jsonify({"error": "無效風格"}), 400
+        update["style"] = style
+    if "mode" in data:
+        mode = data["mode"]
+        if mode in ("dark", "light", "system"):
+            update["mode"] = mode
+    if update:
+        db = _get_db()
+        if db:
+            try:
+                db.collection("system_settings").document("theme").set(update, merge=True)
+            except Exception as e:
+                return jsonify({"error": str(e)}), 500
+    return jsonify({"ok": True})
 
 
 @app.route("/api/feedback", methods=["GET"])
