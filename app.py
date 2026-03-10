@@ -783,6 +783,40 @@ def admin_feedback():
     return render_template_string(FEEDBACK_ADMIN_PAGE)
 
 
+VALID_THEME_STYLES = ["navy", "forest", "amber", "minimal", "rose", "oled"]
+
+@app.route("/api/theme", methods=["GET"])
+def api_theme_get():
+    """取得全局外觀風格（從 Firestore system_settings/theme 讀取）。"""
+    db = _get_db()
+    style = "navy"
+    if db:
+        try:
+            doc = db.collection("system_settings").document("theme").get()
+            if doc.exists:
+                style = doc.to_dict().get("style", "navy")
+        except Exception:
+            pass
+    return jsonify({"style": style})
+
+
+@app.route("/api/theme", methods=["POST"])
+@admin_required
+def api_theme_set():
+    """設定全局外觀風格（僅管理員，寫入 Firestore system_settings/theme）。"""
+    data = request.get_json(silent=True) or {}
+    style = data.get("style", "navy")
+    if style not in VALID_THEME_STYLES:
+        return jsonify({"error": "無效風格"}), 400
+    db = _get_db()
+    if db:
+        try:
+            db.collection("system_settings").document("theme").set({"style": style})
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+    return jsonify({"ok": True, "style": style})
+
+
 @app.route("/api/feedback", methods=["GET"])
 def api_feedback_get():
     return jsonify(_load_feedback())
@@ -919,10 +953,7 @@ def api_search():
         if points < 1:
             return jsonify({"error": "點數不足，請至入口儲值。", "usage_exceeded": True}), 403
         user["points"] = points - 1
-        usage = user.get("usage", {})
-        usage["search_count"] = usage.get("search_count", 0) + 1
-        user["usage"] = usage
-        _save_user(user)
+        # search_count 僅在查詢成功後累加，此處先暫存扣點，不累加 search_count
 
     data = request.get_json() or {}
     lat = data.get("lat")
@@ -946,6 +977,7 @@ def api_search():
         result = _apply_feedback(result)
         _regenerate_summary(result, address_display, radius_m)
 
+        # 查詢成功後才扣點並累加 search_count（確保只加一次）
         if reason_or_data is None and user and not _is_admin(email):
             usage = user.get("usage", {})
             usage["search_count"] = usage.get("search_count", 0) + 1

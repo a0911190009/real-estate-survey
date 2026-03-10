@@ -7,35 +7,19 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <style>
-    :root {
-      --bg: #0f1419;
-      --card: #1a2332;
-      --text: #e6edf3;
-      --muted: #8b949e;
-      --accent: #58a6ff;
-      --danger: #f85149;
-      --ok: #3fb950;
-      --warn: #d29922;
-      --input-bg: #0f1419;
-      --input-border: #30363d;
-      --hover-bg: rgba(255,255,255,0.04);
-      --code-bg: #21262d;
-      --sublist-border: #21262d;
-    }
-    [data-theme="light"] {
-      --bg: #f6f8fa;
-      --card: #ffffff;
-      --text: #1f2328;
-      --muted: #656d76;
-      --accent: #0969da;
-      --danger: #cf222e;
-      --ok: #1a7f37;
-      --warn: #9a6700;
-      --input-bg: #ffffff;
-      --input-border: #d0d7de;
-      --hover-bg: rgba(0,0,0,0.04);
-      --code-bg: #f0f2f4;
-      --sublist-border: #d8dee4;
+    /* 橋接：舊 CSS 變數 → 新主題變數，必須定義在 body 才能取到 [data-theme] 的值 */
+    body {
+      --bg: var(--bg-p);
+      --card: var(--bg-s);
+      --text: var(--tx);
+      --muted: var(--txm);
+      --accent: var(--ac);
+      --danger: var(--dg);
+      --input-bg: var(--bg-t);
+      --input-border: var(--bd);
+      --hover-bg: var(--bg-h);
+      --code-bg: var(--bg-t);
+      --sublist-border: var(--bd);
     }
     * { box-sizing: border-box; }
     .toast-container{position:fixed;bottom:1.5rem;left:50%;transform:translateX(-50%);z-index:9999;display:flex;flex-direction:column;gap:0.5rem;pointer-events:none}
@@ -644,28 +628,6 @@
     .score-toggle:hover { text-decoration: underline; }
 
     /* ── History panel ── */
-    .top-actions {
-      position: fixed; top: 0.6rem; right: 0.8rem; z-index: 1000;
-      display: flex; align-items: center; gap: 0.4rem;
-    }
-    .history-btn {
-      position: static;
-      z-index: 1000;
-      background: var(--card);
-      border: 1px solid var(--input-border);
-      border-radius: 20px;
-      padding: 0.35rem 0.75rem;
-      cursor: pointer;
-      font-size: 0.85rem;
-      color: var(--text);
-      display: flex;
-      align-items: center;
-      gap: 0.4rem;
-      transition: background 0.2s, border-color 0.2s;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
-    }
-    .history-btn:hover { border-color: var(--accent); }
-
     .history-overlay {
       display: none;
       position: fixed;
@@ -775,25 +737,6 @@
       margin-left: -2px;
     }
 
-    /* ── Theme toggle ── */
-    .theme-toggle {
-      position: static;
-      z-index: 1000;
-      background: var(--card);
-      border: 1px solid var(--input-border);
-      border-radius: 20px;
-      padding: 0.35rem 0.75rem;
-      cursor: pointer;
-      font-size: 0.85rem;
-      color: var(--text);
-      display: flex;
-      align-items: center;
-      gap: 0.4rem;
-      transition: background 0.2s, border-color 0.2s;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
-    }
-    .theme-toggle:hover { border-color: var(--accent); }
-
     /* ── Login screen ── */
     .login-overlay {
       position: fixed; top: 0; left: 0; width: 100%; height: 100%;
@@ -812,86 +755,133 @@
     .login-usage { font-size: 0.8rem; color: var(--muted); margin-top: 16px; }
 
     /* ── 統一 Header / Sidebar ── */
-    #app-sidebar {
-      position: fixed; top: 0; left: 0; height: 100%; width: 224px;
-      background: #1e293b; border-right: 1px solid #334155;
-      display: flex; flex-direction: column; z-index: 200;
-    }
-    #app-sidebar .sb-logo {
-      display: flex; align-items: center; gap: 8px;
-      padding: 14px 16px; border-bottom: 1px solid #334155;
-      font-weight: 600; color: #f1f5f9; font-size: 0.85rem;
-    }
-    #app-sidebar .sb-logo img { height: 30px; width: auto; object-fit: contain; }
-    #app-sidebar nav { flex: 1; padding: 12px 8px; display: flex; flex-direction: column; gap: 2px; }
-    #app-sidebar nav a {
-      display: flex; align-items: center; gap: 10px;
-      padding: 9px 12px; border-radius: 10px;
-      color: #94a3b8; font-size: 0.85rem; text-decoration: none; transition: background 0.15s, color 0.15s;
-    }
-    #app-sidebar nav a:hover, #app-sidebar nav a.active { background: #334155; color: #f1f5f9; }
-    #app-sidebar .sb-user {
-      padding: 10px 8px; border-top: 1px solid #334155;
-    }
-    #app-sidebar .sb-user button {
-      width: 100%; display: flex; align-items: center; gap: 10px;
-      padding: 8px 10px; border-radius: 10px; border: none; background: none;
-      cursor: pointer; color: #cbd5e1; font-size: 0.85rem; text-align: left; transition: background 0.15s;
-    }
-    #app-sidebar .sb-user button:hover { background: #334155; }
-    #app-sidebar .sb-user img { width: 32px; height: 32px; border-radius: 50%; border: 2px solid #475569; flex-shrink: 0; }
-    /* 主內容往右移 */
-    @media (min-width: 768px) {
-      body { padding-left: 224px; padding-right: 1.5rem; padding-top: 1.5rem; padding-bottom: 1.5rem; }
-    }
-    /* 手機 Header bar */
-    #app-header {
-      display: none; position: sticky; top: 0; z-index: 150;
-      background: #1e293b; border-bottom: 1px solid #334155;
-      padding: 10px 16px; align-items: center; justify-content: space-between;
-    }
-    #app-header .hd-logo { display: flex; align-items: center; gap: 8px; }
-    #app-header .hd-logo img { height: 26px; width: auto; }
-    #app-header .hd-logo span { font-weight: 600; color: #f1f5f9; font-size: 0.85rem; }
-    #app-header .hd-right { display: flex; align-items: center; gap: 8px; }
-    #app-header .hd-badge {
-      font-size: 0.72rem; padding: 3px 8px; border-radius: 20px;
-      background: #1d4ed8; color: #bfdbfe; font-weight: 600;
-    }
-    #app-header .hd-avatar { width: 34px; height: 34px; border-radius: 50%; border: 2px solid #475569; cursor: pointer; }
-    @media (max-width: 767px) {
-      #app-sidebar { display: none; }
-      #app-header { display: flex; }
-      body { padding-left: 0; }
-      .top-actions { top: 56px; }
-    }
+/* ══ 6 套主題 CSS 變數（與所有工具同步）══ */
+[data-theme="navy-dark"]{--bg-p:#0f172a;--bg-s:#1e293b;--bg-t:#293548;--bg-h:#334155;--bd:#334155;--bdl:#475569;--tx:#f1f5f9;--txs:#94a3b8;--txm:#64748b;--ac:#3b82f6;--ach:#2563eb;--act:#fff;--acs:rgba(59,130,246,0.15);--dg:#f87171;--dgb:rgba(239,68,68,0.15);--ok:#34d399;--warn:#fbbf24;--tg:#1d4ed8;--tgt:#bfdbfe;--sh:0 8px 32px rgba(0,0,0,0.5);}
+[data-theme="navy-light"]{--bg-p:#f0f4f8;--bg-s:#fff;--bg-t:#f8fafc;--bg-h:#e2e8f0;--bd:#cbd5e1;--bdl:#e2e8f0;--tx:#0f172a;--txs:#475569;--txm:#94a3b8;--ac:#2563eb;--ach:#1d4ed8;--act:#fff;--acs:rgba(37,99,235,0.1);--dg:#dc2626;--dgb:rgba(220,38,38,0.08);--ok:#16a34a;--warn:#d97706;--tg:#dbeafe;--tgt:#1e40af;--sh:0 4px 16px rgba(0,0,0,0.1);}
+[data-theme="forest-dark"]{--bg-p:#0a1a12;--bg-s:#132218;--bg-t:#1a3024;--bg-h:#1e3d2a;--bd:#1e3d2a;--bdl:#2d5a3e;--tx:#ecfdf5;--txs:#86efac;--txm:#4ade80;--ac:#22c55e;--ach:#16a34a;--act:#fff;--acs:rgba(34,197,94,0.15);--dg:#f87171;--dgb:rgba(239,68,68,0.15);--ok:#34d399;--warn:#fbbf24;--tg:#14532d;--tgt:#86efac;--sh:0 8px 32px rgba(0,0,0,0.6);}
+[data-theme="forest-light"]{--bg-p:#f0fdf4;--bg-s:#fff;--bg-t:#f7fef9;--bg-h:#dcfce7;--bd:#bbf7d0;--bdl:#dcfce7;--tx:#14532d;--txs:#166534;--txm:#4ade80;--ac:#16a34a;--ach:#15803d;--act:#fff;--acs:rgba(22,163,74,0.1);--dg:#dc2626;--dgb:rgba(220,38,38,0.08);--ok:#16a34a;--warn:#d97706;--tg:#dcfce7;--tgt:#14532d;--sh:0 4px 16px rgba(0,80,40,0.1);}
+[data-theme="amber-dark"]{--bg-p:#1a1208;--bg-s:#261a0c;--bg-t:#332210;--bg-h:#3d2b14;--bd:#3d2b14;--bdl:#5c3d1e;--tx:#fef3c7;--txs:#fcd34d;--txm:#d97706;--ac:#f59e0b;--ach:#d97706;--act:#1a1208;--acs:rgba(245,158,11,0.15);--dg:#f87171;--dgb:rgba(239,68,68,0.15);--ok:#34d399;--warn:#fbbf24;--tg:#78350f;--tgt:#fde68a;--sh:0 8px 32px rgba(0,0,0,0.6);}
+[data-theme="amber-light"]{--bg-p:#fffbeb;--bg-s:#fff;--bg-t:#fefce8;--bg-h:#fef3c7;--bd:#fde68a;--bdl:#fef3c7;--tx:#451a03;--txs:#92400e;--txm:#b45309;--ac:#d97706;--ach:#b45309;--act:#fff;--acs:rgba(217,119,6,0.1);--dg:#dc2626;--dgb:rgba(220,38,38,0.08);--ok:#16a34a;--warn:#d97706;--tg:#fef3c7;--tgt:#78350f;--sh:0 4px 16px rgba(180,100,0,0.1);}
+[data-theme="minimal-light"]{--bg-p:#f9fafb;--bg-s:#fff;--bg-t:#f3f4f6;--bg-h:#f3f4f6;--bd:#e5e7eb;--bdl:#f3f4f6;--tx:#111827;--txs:#6b7280;--txm:#9ca3af;--ac:#4f46e5;--ach:#4338ca;--act:#fff;--acs:rgba(79,70,229,0.08);--dg:#ef4444;--dgb:rgba(239,68,68,0.08);--ok:#10b981;--warn:#f59e0b;--tg:#ede9fe;--tgt:#4c1d95;--sh:0 1px 8px rgba(0,0,0,0.08);}
+[data-theme="minimal-dark"]{--bg-p:#18181b;--bg-s:#27272a;--bg-t:#3f3f46;--bg-h:#3f3f46;--bd:#3f3f46;--bdl:#52525b;--tx:#fafafa;--txs:#a1a1aa;--txm:#71717a;--ac:#6366f1;--ach:#4f46e5;--act:#fff;--acs:rgba(99,102,241,0.15);--dg:#f87171;--dgb:rgba(239,68,68,0.15);--ok:#34d399;--warn:#fbbf24;--tg:#312e81;--tgt:#c7d2fe;--sh:0 8px 32px rgba(0,0,0,0.5);}
+[data-theme="rose-light"]{--bg-p:#fff1f2;--bg-s:#fff;--bg-t:#fff1f2;--bg-h:#ffe4e6;--bd:#fecdd3;--bdl:#ffe4e6;--tx:#4c0519;--txs:#9f1239;--txm:#e11d48;--ac:#e11d48;--ach:#be123c;--act:#fff;--acs:rgba(225,29,72,0.08);--dg:#be123c;--dgb:rgba(190,18,60,0.08);--ok:#16a34a;--warn:#d97706;--tg:#ffe4e6;--tgt:#9f1239;--sh:0 4px 16px rgba(200,0,50,0.1);}
+[data-theme="rose-dark"]{--bg-p:#1a0810;--bg-s:#2a0f1c;--bg-t:#3a1528;--bg-h:#4a1a32;--bd:#4a1a32;--bdl:#6b2545;--tx:#fff1f2;--txs:#fda4af;--txm:#fb7185;--ac:#fb7185;--ach:#f43f5e;--act:#fff;--acs:rgba(251,113,133,0.15);--dg:#f87171;--dgb:rgba(239,68,68,0.15);--ok:#34d399;--warn:#fbbf24;--tg:#881337;--tgt:#fda4af;--sh:0 8px 32px rgba(0,0,0,0.6);}
+[data-theme="oled-dark"]{--bg-p:#000;--bg-s:#0a0a0a;--bg-t:#141414;--bg-h:#1f1f1f;--bd:#1f1f1f;--bdl:#2d2d2d;--tx:#fff;--txs:#a3a3a3;--txm:#525252;--ac:#fff;--ach:#e5e5e5;--act:#000;--acs:rgba(255,255,255,0.08);--dg:#f87171;--dgb:rgba(239,68,68,0.15);--ok:#34d399;--warn:#fbbf24;--tg:#1f1f1f;--tgt:#a3a3a3;--sh:0 8px 32px rgba(0,0,0,0.8);}
+    /* ── 統一 Sidebar ── */
+    #app-sidebar{position:fixed;top:0;left:0;height:100%;width:224px;background:var(--bg-s);border-right:1px solid var(--bd);display:flex;flex-direction:column;z-index:200;transition:background 0.3s,border-color 0.3s;}
+    #app-sidebar .sb-logo{display:flex;align-items:center;gap:8px;padding:14px 16px;border-bottom:1px solid var(--bd);font-weight:600;color:var(--tx);font-size:0.85rem;}
+    #app-sidebar .sb-logo img{height:30px;width:auto;object-fit:contain;}
+    #app-sidebar nav{flex:1;padding:12px 8px;display:flex;flex-direction:column;gap:2px;}
+    #app-sidebar nav a{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:10px;color:var(--txs);font-size:0.85rem;text-decoration:none;transition:background 0.15s,color 0.15s;}
+    #app-sidebar nav a:hover,#app-sidebar nav a.active{background:var(--acs);color:var(--ac);}
+    #app-sidebar .sb-user{padding:10px 8px;border-top:1px solid var(--bd);}
+    #app-sidebar .sb-user button{width:100%;display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:10px;border:none;background:none;cursor:pointer;color:var(--txs);font-size:0.85rem;text-align:left;transition:background 0.15s;}
+    #app-sidebar .sb-user button:hover{background:var(--bg-h);}
+    /* av-wrap 頭像容器 */
+    .av-wrap{position:relative;flex-shrink:0;border-radius:50%;overflow:hidden;border:2px solid var(--bdl);}
+    .av-wrap img{position:absolute;inset:0;width:100%;height:100%;border-radius:50%;object-fit:cover;}
+    .av-wrap .av-fb{width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff;font-size:0.9rem;background:linear-gradient(135deg,var(--ac),var(--ach));}
+    /* points-pill badge */
+    .points-pill{display:inline-flex;align-items:center;padding:0.2rem 0.6rem;border-radius:9999px;font-size:0.72rem;font-weight:600;white-space:nowrap;}
+    .points-pill.admin{background:rgba(139,92,246,0.2);color:rgb(196,167,255);}
+    .points-pill.sub{background:rgba(34,197,94,0.2);color:rgb(134,239,172);}
+    .points-pill.points{background:var(--acs);color:var(--ac);}
+    /* 外觀切換按鈕 */
+    #theme-toggle-btn{width:100%;display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:10px;border:none;background:none;cursor:pointer;color:var(--txs);font-size:0.82rem;text-align:left;transition:background 0.15s;}
+    #theme-toggle-btn:hover{background:var(--bg-h);color:var(--tx);}
+    /* 外觀設定面板 */
+    #theme-panel{position:fixed;top:0;right:0;bottom:0;width:288px;background:var(--bg-s);border-left:1px solid var(--bd);z-index:800;padding:20px;overflow-y:auto;box-shadow:var(--sh);transition:background 0.3s,border-color 0.3s;}
+    .tp-style-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px;}
+    .tp-style-card{border:2px solid var(--bd);border-radius:10px;padding:8px;cursor:pointer;transition:border-color 0.2s,transform 0.15s;position:relative;overflow:hidden;}
+    .tp-style-card:hover{transform:scale(1.02);}
+    .tp-style-card.selected{border-color:var(--ac);}
+    .tp-style-card .preview{height:44px;border-radius:6px;margin-bottom:6px;display:flex;overflow:hidden;}
+    .tp-style-card .preview .sb-strip{width:28%;height:100%;}
+    .tp-style-card .preview .ct-strip{flex:1;height:100%;padding:3px;display:flex;flex-direction:column;gap:2px;}
+    .tp-style-card .preview .ln{border-radius:2px;height:5px;}
+    .tp-check{position:absolute;top:5px;right:5px;width:16px;height:16px;border-radius:50%;background:var(--ac);color:var(--act);font-size:9px;display:none;align-items:center;justify-content:center;}
+    .tp-style-card.selected .tp-check{display:flex;}
+    .tp-style-name{font-size:0.72rem;font-weight:600;color:var(--tx);margin-bottom:1px;}
+    .tp-style-desc{font-size:0.62rem;color:var(--txm);}
+    .tp-mode-row{display:flex;gap:5px;margin-bottom:14px;}
+    .tp-mode-btn{flex:1;padding:7px 4px;border-radius:7px;border:1px solid var(--bd);background:none;color:var(--txs);font-size:0.74rem;cursor:pointer;transition:all 0.15s;}
+    .tp-mode-btn.active{background:var(--ac);color:var(--act);border-color:var(--ac);}
+    .tp-section{font-size:0.68rem;font-weight:600;color:var(--txm);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px;margin-top:14px;}
+    /* 手機 Header */
+    #app-header{display:none;position:sticky;top:0;z-index:150;background:var(--bg-s);border-bottom:1px solid var(--bd);padding:10px 16px;align-items:center;justify-content:space-between;transition:background 0.3s;}
+    #app-header .hd-logo{display:flex;align-items:center;gap:8px;font-weight:600;color:var(--tx);font-size:0.85rem;}
+    #app-header .hd-logo img{height:26px;width:auto;}
+    #app-header .hd-right{display:flex;align-items:center;gap:8px;}
     /* Dropdown 選單 */
-    #user-dropdown {
-      position: fixed; z-index: 500; width: 220px;
-      background: #1e293b; border: 1px solid #334155; border-radius: 14px;
-      box-shadow: 0 8px 32px rgba(0,0,0,0.5); overflow: hidden; display: none;
-    }
-    #user-dropdown .dd-header { padding: 12px 16px; border-bottom: 1px solid #334155; background: #0f172a; }
-    #user-dropdown .dd-header p { margin: 0; font-size: 0.85rem; font-weight: 600; color: #f1f5f9; }
-    #user-dropdown .dd-header span { font-size: 0.72rem; padding: 2px 8px; border-radius: 12px; background: #1d4ed8; color: #bfdbfe; font-weight: 600; }
-    #user-dropdown a, #user-dropdown button {
-      display: flex; align-items: center; gap: 10px;
-      width: 100%; padding: 10px 16px; border: none; background: none;
-      color: #cbd5e1; font-size: 0.85rem; text-decoration: none; cursor: pointer; text-align: left; transition: background 0.15s;
-    }
-    #user-dropdown a:hover, #user-dropdown button:hover { background: #334155; }
-    #user-dropdown .dd-danger { color: #f87171; }
-    #user-dropdown .dd-danger:hover { background: rgba(239,68,68,0.15); }
-    #user-dropdown .dd-divider { height: 1px; background: #334155; margin: 4px 0; }
-    /* 舊 user-bar 隱藏 */
-    .user-bar, .portal-btn { display: none !important; }
-    @media (max-width: 600px) {
-      .top-actions { flex-wrap: wrap; justify-content: flex-end; }
-    }
+    #user-dropdown{position:fixed;z-index:500;width:220px;background:var(--bg-s);border:1px solid var(--bd);border-radius:14px;box-shadow:var(--sh);overflow:hidden;display:none;}
+    #user-dropdown .dd-header{padding:12px 16px;border-bottom:1px solid var(--bd);background:var(--bg-p);}
+    #user-dropdown .dd-header p{margin:0;font-size:0.85rem;font-weight:600;color:var(--tx);}
+    #user-dropdown a,#user-dropdown button{display:flex;align-items:center;gap:10px;width:100%;padding:10px 16px;border:none;background:none;color:var(--txs);font-size:0.85rem;text-decoration:none;cursor:pointer;text-align:left;transition:background 0.15s;}
+    #user-dropdown a:hover,#user-dropdown button:hover{background:var(--bg-h);color:var(--tx);}
+    #user-dropdown .dd-danger{color:var(--dg);}
+    #user-dropdown .dd-danger:hover{background:var(--dgb);}
+    #user-dropdown .dd-divider{height:1px;background:var(--bd);margin:4px 0;}
+    /* 主內容往右移 */
+    @media(min-width:768px){body{padding-left:calc(224px + 1.5rem);padding-right:1.5rem;padding-top:1.5rem;padding-bottom:1.5rem;}}
+    @media(max-width:767px){#app-sidebar{display:none;}#app-header{display:flex;}body{padding-left:1rem;padding-right:1rem;padding-top:1rem;padding-bottom:72px;}}
+    /* 手機底部 Tab Bar */
+    #sv-tab-bar{position:fixed;bottom:0;left:0;right:0;z-index:250;background:var(--bg-s);backdrop-filter:blur(8px);border-top:1px solid var(--bd);display:none;transition:background 0.3s;}
+    @media(max-width:767px){#sv-tab-bar{display:flex;}}
+    .sv-tb-item{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 4px;color:var(--txm);font-size:0.65rem;text-decoration:none;transition:color 0.15s;}
+    .sv-tb-item:hover,.sv-tb-active{color:var(--tx)!important;}
   </style>
 </head>
-<body>
+<body data-theme="navy-dark">
   <div class="toast-container" id="toast-container"></div>
+
+<!-- ── 外觀設定面板 ── -->
+<div id="theme-panel" style="display:none;">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+    <div style="font-size:0.95rem;font-weight:700;color:var(--tx);">🎨 外觀設定</div>
+    <button onclick="document.getElementById('theme-panel').style.display='none'" style="background:none;border:none;color:var(--txm);cursor:pointer;font-size:1.2rem;line-height:1;">✕</button>
+  </div>
+  <div style="font-size:0.75rem;color:var(--txm);margin-bottom:14px;">管理員設定的風格，所有成員同步套用</div>
+  <div class="tp-section">明暗模式（個人）</div>
+  <div class="tp-mode-row" id="tp-mode-row">
+    <button class="tp-mode-btn" id="tp-btn-dark" onclick="window._tpSetMode('dark')">🌙 深色</button>
+    <button class="tp-mode-btn" id="tp-btn-light" onclick="window._tpSetMode('light')">☀️ 淺色</button>
+    <button class="tp-mode-btn" id="tp-btn-system" onclick="window._tpSetMode('system')">🖥️ 系統</button>
+  </div>
+  <div class="tp-section">色系風格（後台統一）</div>
+  <div class="tp-style-grid" id="tp-style-grid">
+    <div class="tp-style-card" id="tp-card-navy" onclick="window._tpAdminSetStyle('navy')">
+      <div class="preview"><div class="sb-strip" style="background:#1e293b;"></div><div class="ct-strip" style="background:#0f172a;"><div class="ln" style="background:#334155;width:80%;"></div><div class="ln" style="background:#3b82f6;width:50%;"></div><div class="ln" style="background:#334155;width:65%;"></div></div></div>
+      <div class="tp-check">✓</div><div class="tp-style-name">🌙 深夜藍</div><div class="tp-style-desc">穩重專業</div>
+    </div>
+    <div class="tp-style-card" id="tp-card-forest" onclick="window._tpAdminSetStyle('forest')">
+      <div class="preview"><div class="sb-strip" style="background:#132218;"></div><div class="ct-strip" style="background:#0a1a12;"><div class="ln" style="background:#1e3d2a;width:80%;"></div><div class="ln" style="background:#22c55e;width:50%;"></div><div class="ln" style="background:#1e3d2a;width:65%;"></div></div></div>
+      <div class="tp-check">✓</div><div class="tp-style-name">🌿 森林綠</div><div class="tp-style-desc">清新活力</div>
+    </div>
+    <div class="tp-style-card" id="tp-card-amber" onclick="window._tpAdminSetStyle('amber')">
+      <div class="preview"><div class="sb-strip" style="background:#261a0c;"></div><div class="ct-strip" style="background:#1a1208;"><div class="ln" style="background:#3d2b14;width:80%;"></div><div class="ln" style="background:#f59e0b;width:50%;"></div><div class="ln" style="background:#3d2b14;width:65%;"></div></div></div>
+      <div class="tp-check">✓</div><div class="tp-style-name">🌅 暖棕商務</div><div class="tp-style-desc">低調奢華</div>
+    </div>
+    <div class="tp-style-card" id="tp-card-minimal" onclick="window._tpAdminSetStyle('minimal')">
+      <div class="preview"><div class="sb-strip" style="background:#fff;border-right:1px solid #e5e7eb;"></div><div class="ct-strip" style="background:#f9fafb;"><div class="ln" style="background:#e5e7eb;width:80%;"></div><div class="ln" style="background:#4f46e5;width:50%;"></div><div class="ln" style="background:#e5e7eb;width:65%;"></div></div></div>
+      <div class="tp-check">✓</div><div class="tp-style-name">⬜ 純白簡約</div><div class="tp-style-desc">清晰易讀</div>
+    </div>
+    <div class="tp-style-card" id="tp-card-rose" onclick="window._tpAdminSetStyle('rose')">
+      <div class="preview"><div class="sb-strip" style="background:#2a0f1c;"></div><div class="ct-strip" style="background:#1a0810;"><div class="ln" style="background:#4a1a32;width:80%;"></div><div class="ln" style="background:#fb7185;width:50%;"></div><div class="ln" style="background:#4a1a32;width:65%;"></div></div></div>
+      <div class="tp-check">✓</div><div class="tp-style-name">🌸 玫瑰粉</div><div class="tp-style-desc">優雅浪漫</div>
+    </div>
+    <div class="tp-style-card" id="tp-card-oled" onclick="window._tpAdminSetStyle('oled')">
+      <div class="preview"><div class="sb-strip" style="background:#0a0a0a;"></div><div class="ct-strip" style="background:#000;"><div class="ln" style="background:#1f1f1f;width:80%;"></div><div class="ln" style="background:#fff;width:50%;"></div><div class="ln" style="background:#1f1f1f;width:65%;"></div></div></div>
+      <div class="tp-check">✓</div><div class="tp-style-name">🖤 OLED 黑</div><div class="tp-style-desc">省電護眼</div>
+    </div>
+  </div>
+  <div id="tp-admin-only" style="display:none;">
+    <button onclick="window._tpSaveStyle()" style="width:100%;padding:9px;border-radius:8px;background:var(--ac);color:var(--act);border:none;cursor:pointer;font-size:0.85rem;font-weight:600;">💾 套用到所有工具</button>
+    <div id="tp-save-msg" style="text-align:center;font-size:0.75rem;color:var(--ok);margin-top:6px;display:none;">✓ 已儲存！所有工具同步套用</div>
+  </div>
+  <div style="margin-top:14px;padding:10px;border-radius:8px;background:var(--bg-t);border:1px solid var(--bd);font-size:0.7rem;color:var(--txm);line-height:1.6;">
+    💡 風格由管理員統一設定，明暗模式依個人裝置偏好儲存。
+  </div>
+</div>
 
   <!-- ── 桌機左側 Sidebar ── -->
   <aside id="app-sidebar">
@@ -901,17 +891,19 @@
     </div>
     <nav>
       <a href="javascript:void(0)" id="sb-portal-home" class="hidden">🏠 工具首頁</a>
+      <a href="javascript:void(0)" id="sb-ad" class="hidden">📝 廣告文案</a>
       <a href="javascript:void(0)" id="sb-library" class="hidden">📁 物件庫</a>
-      <a href="#" class="active">🗺️ 周邊調查</a>
+      <a href="javascript:void(0)" id="sb-buyer" class="hidden">👥 買方管理</a>
+      <a href="#" class="active">📍 周邊調查</a>
     </nav>
     <div class="sb-user">
       <button type="button" onclick="toggleDropdown(event)">
-        <img id="sb-avatar" src="" alt="" />
-        <div style="min-width:0;flex:1">
-          <div id="sb-name" style="font-size:0.82rem;font-weight:600;color:#f1f5f9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"></div>
-          <div id="sb-badge" style="font-size:0.7rem;color:#93c5fd;">— 點</div>
+        <div id="sb-avatar" class="av-wrap" style="width:36px;height:36px;flex-shrink:0;"><div class="av-fb">?</div></div>
+        <div style="min-width:0;flex:1;">
+          <div id="sb-name" style="font-size:0.82rem;font-weight:600;color:var(--tx);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"></div>
+          <span id="sb-badge" class="points-pill points" style="margin-top:2px;">— 點</span>
         </div>
-        <span style="color:#64748b;font-size:0.75rem;">▲</span>
+        <svg style="width:16px;height:16px;color:var(--txm);flex-shrink:0;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
       </button>
     </div>
   </aside>
@@ -922,8 +914,9 @@
       <img src="/static/logo.png" alt="U.P." onerror="this.style.display='none'" />
       <span>周邊調查</span>
     </div>
-    <div class="hd-right">
-      <img class="hd-avatar" id="hd-avatar" src="" alt="" onclick="toggleDropdown(event)" />
+    <div class="hd-right" style="cursor:pointer;" onclick="toggleDropdown(event)">
+      <span id="hd-badge" class="points-pill points"></span>
+      <div id="hd-avatar" class="av-wrap" style="width:34px;height:34px;cursor:pointer;"><div class="av-fb">?</div></div>
     </div>
   </header>
 
@@ -931,14 +924,13 @@
   <div id="user-dropdown">
     <div class="dd-header">
       <p id="dd-name">載入中…</p>
-      <span id="dd-badge">— 點</span>
+      <span id="dd-badge" class="points-pill points" style="margin-top:4px;">— 點</span>
     </div>
     <div style="padding: 4px 0;">
-      <a id="dd-portal-home" href="javascript:void(0)" class="hidden">🏠 工具首頁</a>
-      <a id="dd-library" href="javascript:void(0)" class="hidden">📁 物件庫</a>
       <a id="dd-plans" href="javascript:void(0)" class="hidden">⬆️ 升級方案</a>
       <a id="dd-account" href="javascript:void(0)" class="hidden">👤 帳號管理</a>
       <a id="dd-admin" href="javascript:void(0)" class="hidden">🛡️ 後台管理</a>
+      <button onclick="closeDropdown();document.getElementById('theme-panel').style.display='block';" style="display:flex;align-items:center;gap:10px;width:100%;padding:10px 16px;border:none;background:none;color:var(--txs);font-size:0.85rem;cursor:pointer;text-align:left;transition:background 0.15s;" onmouseover="this.style.background='var(--bg-h)';this.style.color='var(--tx)'" onmouseout="this.style.background='none';this.style.color='var(--txs)'">🎨 外觀設定</button>
     </div>
     <div class="dd-divider"></div>
     <div style="padding: 4px 0;">
@@ -956,15 +948,6 @@
     </div>
   </div>
 
-  <div class="top-actions">
-    <div class="user-bar hidden" id="user-bar">
-      <img id="user-avatar" src="" alt="" />
-      <span id="user-name"></span>
-      <span class="usage-badge" id="user-usage"></span>
-    </div>
-    <button class="history-btn" id="history-btn" title="查詢歷史">📋 歷史</button>
-    <button class="theme-toggle" id="theme-toggle" title="切換明暗模式">🌙 暗色</button>
-  </div>
 
   <div class="history-overlay" id="history-overlay">
     <div class="history-dialog">
@@ -1001,7 +984,13 @@
   </div>
 
   <div class="container">
-    <h1>地理設施調查 v3.7</h1>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.25rem;">
+      <h1 style="margin:0;">地理設施調查 v3.7</h1>
+      <button type="button" title="查詢歷史紀錄"
+        onclick="loadHistoryList();var o=document.getElementById('history-overlay');o.style.display='flex';o.classList.add('show');"
+        style="display:flex;align-items:center;gap:5px;padding:5px 12px;border-radius:20px;border:1px solid var(--input-border);background:var(--card);color:var(--muted);font-size:0.82rem;cursor:pointer;white-space:nowrap;transition:border-color 0.15s;"
+        onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--input-border)'">📋 歷史</button>
+    </div>
     <p class="sub">輸入座標或地址，可自訂半徑查詢生活機能與嫌惡設施（預設 350m）</p>
 
     <div class="card">
@@ -1099,9 +1088,9 @@
           <div style="display:flex; gap:0.4rem;">
             <button type="button" id="btn-refresh-summary" style="margin:0; padding:0.4rem 0.8rem; font-size:0.8rem; background:var(--accent); color:#fff; border:none; border-radius:4px; cursor:pointer; display:none;">🔄 依反饋更新總結</button>
             <button type="button" id="btn-share-summary" style="margin:0; padding:0.4rem 0.8rem; font-size:0.8rem; background:#25D366; color:#fff; border:none; border-radius:4px; cursor:pointer;">📤 分享</button>
-            <button type="button" id="btn-download-pdf" style="margin:0; padding:0.4rem 0.8rem; font-size:0.8rem; background:#e74c3c; color:#fff; border:none; border-radius:4px; cursor:pointer;">📄 PDF</button>
-            <button type="button" id="btn-download-txt" style="margin:0; padding:0.4rem 0.8rem; font-size:0.8rem; background:#8957e5; color:#fff; border:none; border-radius:4px; cursor:pointer;">📥 TXT</button>
-            <button type="button" id="btn-copy-summary" style="margin:0; padding:0.4rem 0.8rem; font-size:0.8rem; background:#3fb950; color:#fff; border:none; border-radius:4px; cursor:pointer;">複製</button>
+            <button type="button" id="btn-download-pdf" style="margin:0; padding:0.4rem 0.8rem; font-size:0.8rem; background:var(--dg); color:#fff; border:none; border-radius:4px; cursor:pointer;">📄 PDF</button>
+            <button type="button" id="btn-download-txt" style="margin:0; padding:0.4rem 0.8rem; font-size:0.8rem; background:var(--accent); color:#fff; border:none; border-radius:4px; cursor:pointer;">📥 TXT</button>
+            <button type="button" id="btn-copy-summary" style="margin:0; padding:0.4rem 0.8rem; font-size:0.8rem; background:var(--ok); color:#fff; border:none; border-radius:4px; cursor:pointer;">複製</button>
           </div>
         </div>
         <pre id="summary-text" style="white-space:pre-wrap; font-size:0.85rem; line-height:1.7; color:var(--text); background:var(--bg); padding:1rem; border-radius:6px; border:1px solid var(--input-border); max-height:400px; overflow-y:auto;"></pre>
@@ -1138,20 +1127,32 @@
       document.getElementById("login-overlay").classList.add("hidden");
       const name = user.name || user.email || "";
       const pic  = user.picture || "";
-      // 舊 user-bar（保留但隱藏，供其他 JS 相容）
-      const bar = document.getElementById("user-bar");
-      if (bar) bar.classList.remove("hidden");
-      _setAll(["user-avatar", "sb-avatar", "hd-avatar"], pic, "src");
+      const initial = (name || "?").trim().charAt(0).toUpperCase();
+      // 更新 av-wrap 頭像（sidebar + 手機 header）
+      ["sb-avatar", "hd-avatar"].forEach(id => {
+        const wrap = document.getElementById(id);
+        if (!wrap) return;
+        if (pic) {
+          wrap.innerHTML = `<img src="${pic}" referrerpolicy="no-referrer" alt="" /><div class="av-fb" style="display:none">${initial}</div>`;
+          const img = wrap.querySelector("img");
+          img.onerror = function() { this.style.display="none"; wrap.querySelector(".av-fb").style.display="flex"; };
+        } else {
+          wrap.innerHTML = `<div class="av-fb">${initial}</div>`;
+        }
+      });
       _setAll(["user-name", "sb-name", "dd-name"], name, "textContent");
-      // 點數 badge（優先顯示點數，管理員顯示「管理員」）
-      let badgeText = "—";
-      if (user.is_admin) {
-        badgeText = "管理員";
-      } else if (user.points != null) {
-        badgeText = user.points + " 點";
+      // points-pill badge（管理員/訂閱/點數，與 Portal 一致）
+      let subActive = user.subscription_active;
+      if (subActive === undefined && user.subscription_end) {
+        try { subActive = new Date(user.subscription_end.replace("Z","").slice(0,19)).getTime() > Date.now(); } catch(e) { subActive = false; }
       }
-      // sb-badge（sidebar）、dd-badge（dropdown）顯示點數
-      _setAll(["user-usage", "sb-badge", "dd-badge"], badgeText, "textContent");
+      ["sb-badge", "dd-badge", "hd-badge", "user-usage"].forEach(id => {
+        const el = document.getElementById(id); if (!el) return;
+        el.classList.remove("admin","sub","points");
+        if (user.is_admin) { el.classList.add("admin"); el.textContent = "管理員"; }
+        else if (subActive) { el.classList.add("sub"); el.textContent = user.subscription_plan === "yearly" ? "年訂閱" : "月訂閱"; }
+        else { el.classList.add("points"); el.textContent = (user.points != null ? user.points : 0) + " 點"; }
+      });
     }
 
     // ── Dropdown 開關 ──
@@ -1210,6 +1211,7 @@
       fetch("/api/config").then(r => r.json()).then(cfg => {
         if (cfg.portal_url) {
           _portalUrl = cfg.portal_url;
+          window._portalUrl = cfg.portal_url;
           const pl = document.getElementById("portal-login-link");
           if (pl) pl.href = cfg.portal_url;
           // 設定 Sidebar + Dropdown 的首頁/物件庫連結
@@ -1217,14 +1219,25 @@
           const plansUrl   = cfg.portal_url.replace(/\/$/, "") + "/plans";
           const accountUrl = cfg.portal_url.replace(/\/$/, "") + "/account";
           const adminUrl   = cfg.portal_url.replace(/\/$/, "") + "/admin";
-          ["sb-portal-home", "dd-portal-home"].forEach(id => {
-            const el = document.getElementById(id);
-            if (el) { el.href = cfg.portal_url; el.target = "tool-portal"; el.classList.remove("hidden"); }
-          });
-          ["sb-library", "dd-library"].forEach(id => {
-            const el = document.getElementById(id);
-            if (el) { el.href = libraryUrl; el.target = "tool-library"; el.classList.remove("hidden"); }
-          });
+          const sbPortalHome = document.getElementById("sb-portal-home");
+          if (sbPortalHome) { sbPortalHome.href = cfg.portal_url; sbPortalHome.target = "tool-portal"; sbPortalHome.classList.remove("hidden"); }
+          const sbLibrary = document.getElementById("sb-library");
+          if (sbLibrary) { sbLibrary.href = libraryUrl; sbLibrary.target = "tool-library"; sbLibrary.classList.remove("hidden"); }
+          // Sidebar 廣告和買方連結
+          const portalBase = cfg.portal_url.replace(/\/$/, "");
+          const sbAd = document.getElementById("sb-ad");
+          if (sbAd) { sbAd.href = portalBase + "/api/enter/post"; sbAd.target = "tool-post"; sbAd.classList.remove("hidden"); }
+          const sbBuyer = document.getElementById("sb-buyer");
+          if (sbBuyer) { sbBuyer.href = portalBase + "/api/enter/buyer"; sbBuyer.target = "tool-buyer"; sbBuyer.classList.remove("hidden"); }
+          // Tab Bar 連結
+          const svTbHome = document.getElementById("sv-tb-home");
+          if (svTbHome) { svTbHome.href = cfg.portal_url; svTbHome.target = "tool-portal"; }
+          const svTbAd = document.getElementById("sv-tb-ad");
+          if (svTbAd) { svTbAd.href = portalBase + "/api/enter/post"; svTbAd.target = "tool-post"; svTbAd.classList.remove("hidden"); }
+          const svTbLib = document.getElementById("sv-tb-library");
+          if (svTbLib) { svTbLib.href = libraryUrl; svTbLib.target = "tool-library"; svTbLib.classList.remove("hidden"); }
+          const svTbBuyer = document.getElementById("sv-tb-buyer");
+          if (svTbBuyer) { svTbBuyer.href = portalBase + "/api/enter/buyer"; svTbBuyer.target = "tool-buyer"; svTbBuyer.classList.remove("hidden"); }
           const ddPlans = document.getElementById("dd-plans");
           if (ddPlans) { ddPlans.href = plansUrl; ddPlans.classList.remove("hidden"); }
           const ddAccount = document.getElementById("dd-account");
@@ -1237,7 +1250,7 @@
           if (data.logged_in) {
             _authUser = data;
             showLoggedIn(data);
-            // 管理員才顯示後台連結
+            // 管理員才顯示後台連結和「套用到所有工具」
             if (data.is_admin && _portalUrl) {
               const adminUrl = _portalUrl.replace(/\/$/, "") + "/admin";
               ["dd-admin"].forEach(id => {
@@ -1245,6 +1258,7 @@
                 if (el) { el.href = adminUrl; el.classList.remove("hidden"); }
               });
             }
+            if (window._tpCheckAdmin) window._tpCheckAdmin(!!data.is_admin);
           }
         })
         .catch(() => {
@@ -1252,26 +1266,83 @@
         });
     })();
 
-    // ── Theme toggle ──
+    // ══ 主題系統（與所有工具同步）══
     (function() {
-      const saved = localStorage.getItem("theme") || "dark";
-      if (saved === "light") document.documentElement.setAttribute("data-theme", "light");
-      const btn = document.getElementById("theme-toggle");
-      function updateBtn() {
-        const isLight = document.documentElement.getAttribute("data-theme") === "light";
-        btn.textContent = isLight ? "☀️ 明亮" : "🌙 暗色";
+      var STYLE_MODES = {
+        navy:    { dark:'navy-dark',    light:'navy-light'    },
+        forest:  { dark:'forest-dark',  light:'forest-light'  },
+        amber:   { dark:'amber-dark',   light:'amber-light'   },
+        minimal: { dark:'minimal-dark', light:'minimal-light' },
+        rose:    { dark:'rose-dark',    light:'rose-light'    },
+        oled:    { dark:'oled-dark',    light:'oled-dark'     },
+      };
+      var DARK_ONLY = ['oled'];
+      var _style = 'navy';
+      var _mode  = 'system';
+
+      function _applyTheme() {
+        var sys = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        var eff = _mode === 'system' ? (sys ? 'dark' : 'light') : _mode;
+        if (DARK_ONLY.indexOf(_style) >= 0) eff = 'dark';
+        document.body.setAttribute('data-theme', (STYLE_MODES[_style] || STYLE_MODES.navy)[eff]);
+        ['dark','light','system'].forEach(function(m) {
+          var btn = document.getElementById('tp-btn-' + m);
+          if (btn) btn.classList.toggle('active', m === _mode);
+        });
+        Object.keys(STYLE_MODES).forEach(function(s) {
+          var card = document.getElementById('tp-card-' + s);
+          if (card) card.classList.toggle('selected', s === _style);
+        });
+        var isOled = DARK_ONLY.indexOf(_style) >= 0;
+        ['light','system'].forEach(function(m) {
+          var btn = document.getElementById('tp-btn-' + m);
+          if (btn) { btn.disabled = isOled; btn.style.opacity = isOled ? '0.4' : '1'; }
+        });
       }
-      updateBtn();
-      btn.addEventListener("click", () => {
-        const isLight = document.documentElement.getAttribute("data-theme") === "light";
-        if (isLight) {
-          document.documentElement.removeAttribute("data-theme");
-          localStorage.setItem("theme", "dark");
-        } else {
-          document.documentElement.setAttribute("data-theme", "light");
-          localStorage.setItem("theme", "light");
-        }
-        updateBtn();
+
+      // 立即套用快取防閃白
+      (function() {
+        var s = localStorage.getItem('up_style') || 'navy';
+        var m = localStorage.getItem('up_mode') || 'system';
+        var sys = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        var eff = m === 'system' ? (sys ? 'dark' : 'light') : m;
+        if (DARK_ONLY.indexOf(s) >= 0) eff = 'dark';
+        document.body.setAttribute('data-theme', (STYLE_MODES[s] || STYLE_MODES.navy)[eff]);
+      })();
+
+      window._tpSetMode = function(m) { _mode = m; localStorage.setItem('up_mode', m); _applyTheme(); };
+      window._tpAdminSetStyle = function(s) { _style = s; localStorage.setItem('up_style', s); _applyTheme(); };
+      window._tpSaveStyle = function() {
+        // 直接呼叫 Survey 自己的 /api/theme（管理員寫入 Firestore，其他工具同步讀取）
+        fetch('/api/theme', {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({style:_style})
+        }).then(function(r){ return r.json(); }).then(function(d) {
+          if (d.ok) {
+            localStorage.setItem('up_style', _style);
+            var msg = document.getElementById('tp-save-msg');
+            if (msg) { msg.style.display='block'; setTimeout(function(){msg.style.display='none';},3000); }
+          }
+        }).catch(function(){});
+      };
+      window._tpCheckAdmin = function(isAdmin) {
+        var el = document.getElementById('tp-admin-only');
+        if (el) el.style.display = isAdmin ? 'block' : 'none';
+      };
+
+      document.addEventListener('DOMContentLoaded', function() {
+        _mode = localStorage.getItem('up_mode') || 'system';
+        _style = localStorage.getItem('up_style') || 'navy';
+        _applyTheme();
+        window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function() {
+          if (_mode === 'system') _applyTheme();
+        });
+        // 取後台最新風格（從 Survey 自己的 /api/theme，後端讀 Firestore，與 Portal 共用）
+        fetch('/api/theme').then(function(r){ return r.json(); }).then(function(d) {
+          if (d.style && d.style !== _style) {
+            _style = d.style; localStorage.setItem('up_style', _style); _applyTheme();
+          }
+        }).catch(function(){});
       });
     })();
 
@@ -1979,22 +2050,22 @@
           let extra = "";
           const ni = niMap[f.name];
           if (ni) {
-            extra = `<br><span style="color:${ni.impact_level==='high'?'#f85149':ni.impact_level==='medium'?'#d29922':'#3fb950'}">${ni.impact_emoji} ${ni.impact_label}</span>` +
-                    `<br><small style="color:#888;">${ni.impact_note}</small>`;
+            extra = `<br><span style="color:${ni.impact_level==='high'?'var(--dg)':ni.impact_level==='medium'?'var(--warn)':'var(--ok)'}">${ni.impact_emoji} ${ni.impact_label}</span>` +
+                    `<br><small style="color:var(--txm);">${ni.impact_note}</small>`;
           }
           const rn = rnMap[f.name];
           if (rn) {
-            extra += `<br><small style="color:#d29922;">⚠️ ${rn.details ? rn.details[0] : ''}</small>`;
+            extra += `<br><small style="color:var(--warn);">⚠️ ${rn.details ? rn.details[0] : ''}</small>`;
           }
           const gtLabelText = f.google_type || f.category || "";
-          const gtLabel = gtLabelText ? ` <small style="color:#58a6ff;">${escapeHtml(gtLabelText)}</small>` : "";
+          const gtLabel = gtLabelText ? ` <small style="color:var(--ac);">${escapeHtml(gtLabelText)}</small>` : "";
           const gLink = gmapUrl(f);
-          const linkHtml = gLink ? `<br><a href="${gLink}" target="_blank" rel="noopener" style="color:#58a6ff; font-size:0.82em;">在 Google 地圖查看 →</a>` : "";
-          const notableBadge = f.notable ? `<span style="color:#f0883e;font-size:0.85em;" title="房價利多指標"> ⭐</span>` : "";
+          const linkHtml = gLink ? `<br><a href="${gLink}" target="_blank" rel="noopener" style="color:var(--ac); font-size:0.82em;">在 Google 地圖查看 →</a>` : "";
+          const notableBadge = f.notable ? `<span style="color:var(--warn);font-size:0.85em;" title="房價利多指標"> ⭐</span>` : "";
           cm.bindPopup(
             `<b>${escapeHtml(f.name)}</b>${notableBadge}${gtLabel}<br>` +
             `${escapeHtml(f.category)} · ${fmtDist(f.distance)}<br>` +
-            `<small style="color:#888;">${escapeHtml(f.address || '')}</small>` +
+            `<small style="color:var(--txm);">${escapeHtml(f.address || '')}</small>` +
             extra + linkHtml,
             { maxWidth: 300 }
           );
@@ -2687,15 +2758,14 @@
     const historyOverlay = document.getElementById("history-overlay");
     const historyList = document.getElementById("history-list");
 
-    document.getElementById("history-btn").addEventListener("click", () => {
-      loadHistoryList();
-      historyOverlay.classList.add("show");
-    });
-    document.getElementById("history-close").addEventListener("click", () => {
+    // 歷史按鈕位於頁面標題旁，onclick 直接呼叫 loadHistoryList()
+    function closeHistoryOverlay() {
+      historyOverlay.style.display = "none";
       historyOverlay.classList.remove("show");
-    });
+    }
+    document.getElementById("history-close").addEventListener("click", closeHistoryOverlay);
     historyOverlay.addEventListener("click", (e) => {
-      if (e.target === historyOverlay) historyOverlay.classList.remove("show");
+      if (e.target === historyOverlay) closeHistoryOverlay();
     });
 
     function formatHistoryDate(iso) {
@@ -2917,5 +2987,29 @@
       }
     })();
   </script>
+
+<!-- ── 手機底部 Tab Bar ── -->
+<nav id="sv-tab-bar">
+  <a id="sv-tb-home" href="javascript:void(0)" class="sv-tb-item">
+    <span style="font-size:1.3rem;">🏠</span>
+    <span>首頁</span>
+  </a>
+  <a id="sv-tb-ad" href="javascript:void(0)" class="sv-tb-item hidden">
+    <span style="font-size:1.3rem;">📝</span>
+    <span>廣告</span>
+  </a>
+  <a id="sv-tb-library" href="javascript:void(0)" class="sv-tb-item hidden">
+    <span style="font-size:1.3rem;">📁</span>
+    <span>物件庫</span>
+  </a>
+  <a id="sv-tb-buyer" href="javascript:void(0)" class="sv-tb-item hidden">
+    <span style="font-size:1.3rem;">👥</span>
+    <span>買方</span>
+  </a>
+  <a href="#" class="sv-tb-item sv-tb-active">
+    <span style="font-size:1.3rem;">📍</span>
+    <span>周邊</span>
+  </a>
+</nav>
 </body>
 </html>
