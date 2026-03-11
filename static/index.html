@@ -896,6 +896,7 @@
       <a href="javascript:void(0)" id="sb-library" class="hidden">📁 物件庫</a>
       <a href="javascript:void(0)" id="sb-buyer" class="hidden">👥 買方管理</a>
       <a href="#" class="active">📍 周邊調查</a>
+      <a href="javascript:void(0)" id="sb-calendar" class="hidden">📅 業務行事曆</a>
     </nav>
     <div class="sb-user">
       <button type="button" onclick="toggleDropdown(event)">
@@ -1239,6 +1240,10 @@
           if (svTbLib) { svTbLib.href = libraryUrl; svTbLib.target = "tool-library"; svTbLib.classList.remove("hidden"); }
           const svTbBuyer = document.getElementById("sv-tb-buyer");
           if (svTbBuyer) { svTbBuyer.href = portalBase + "/api/enter/buyer"; svTbBuyer.target = "tool-buyer"; svTbBuyer.classList.remove("hidden"); }
+          const svTbCalendar = document.getElementById("sv-tb-calendar");
+          if (svTbCalendar) { svTbCalendar.href = portalBase + "/api/enter/calendar"; svTbCalendar.target = "tool-calendar"; svTbCalendar.classList.remove("hidden"); }
+          const sbCalendar = document.getElementById("sb-calendar");
+          if (sbCalendar) { sbCalendar.href = portalBase + "/api/enter/calendar"; sbCalendar.target = "tool-calendar"; sbCalendar.classList.remove("hidden"); }
           const ddPlans = document.getElementById("dd-plans");
           if (ddPlans) { ddPlans.href = plansUrl; ddPlans.classList.remove("hidden"); }
           const ddAccount = document.getElementById("dd-account");
@@ -3014,6 +3019,10 @@
   <a href="#" class="sv-tb-item sv-tb-active">
     <span style="font-size:1.3rem;">📍</span>
     <span>周邊</span>
+  </a>
+  <a id="sv-tb-calendar" href="javascript:void(0)" class="sv-tb-item hidden">
+    <span style="font-size:1.3rem;">📅</span>
+    <span>行事曆</span>
   </a>
 </nav>
 </body>
