@@ -81,7 +81,7 @@ FREE_SEARCH_LIMIT = int(os.environ.get("FREE_SEARCH_LIMIT", "3"))
 PORTAL_URL = (os.environ.get("PORTAL_URL") or "").strip()
 SERVICE_API_KEY = (os.environ.get("SERVICE_API_KEY") or "").strip()
 TOKEN_SERIALIZER = URLSafeTimedSerializer(app.secret_key)
-TOKEN_MAX_AGE = 60
+TOKEN_MAX_AGE = 300  # 5 分鐘，容忍 Cloud Run cold start
 
 
 @app.route("/health")
