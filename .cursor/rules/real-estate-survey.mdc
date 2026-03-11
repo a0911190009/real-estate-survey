@@ -69,4 +69,4 @@ alwaysApply: true
 - **模型建議**：日常開發、小功能、修 bug 用 Sonnet 4 即可；大規模重構或跨專案架構調整再建議用 Opus。
 - **前端動態 onclick**：按鈕傳入 ID 時用單引號包字串，勿用 `JSON.stringify(id)`（雙引號會截斷 HTML 屬性）。
 - **部署與儲存**：Survey 有 GCS 時歷史與反饋會持久化；部署後若行為異常可提醒檢查 Cloud Run 環境變數是否已設定。
-- **同步 Cloud + GitHub**：完成跨專案或部署相關修改後，可提醒使用者執行 `~/Projects/sync-to-cloud-and-github.sh` 一次推送並部署。
+- **同步 Cloud + GitHub**：完成任何修改後，AI **直接執行** `cd ~/Projects && ./sync-to-cloud-and-github.sh "說明"` 推送並部署，不等使用者提醒、不詢問同意。新工具則先用 GitHub API 建立 repo，再執行 sync 腳本。
