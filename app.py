@@ -417,7 +417,7 @@ def _get_current_user():
     return _load_user(email)
 
 
-SERVICE_API_KEY = os.environ.get("SERVICE_API_KEY", "")
+# SERVICE_API_KEY 已在第 82 行定義，此處不再重複
 
 
 def login_required(f):
@@ -1385,9 +1385,12 @@ def api_history_shared(user_safe, history_id):
     db = _get_db()
     if db:
         try:
-            # user_safe 為安全化 email，嘗試直接用原始 email 查詢（向前相容）
-            # 若 Firestore 找不到，fallback 到 GCS
-            pass
+            email_guess = user_safe.replace("_at_", "@").replace("_", ".")
+            doc = db.collection("users").document(email_guess).collection("survey_history").document(safe_id).get()
+            if doc.exists:
+                data = doc.to_dict()
+                data.pop("_id", None)
+                return jsonify(data)
         except Exception:
             pass
 
