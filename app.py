@@ -633,11 +633,15 @@ def auth_portal_login():
         session["user_email"] = email
         session["user_name"] = payload.get("name", "")
         session["user_picture"] = payload.get("picture", "")
+        session.modified = True
 
         next_url = request.args.get("next", "/")
         if not next_url.startswith("/"):
             next_url = "/"
-        return redirect(next_url)
+        return f"""<!DOCTYPE html><html><head><meta charset="utf-8">
+<meta http-equiv="refresh" content="0;url={next_url}">
+<script>window.location.replace("{next_url}");</script>
+</head><body></body></html>"""
     except Exception as e:
         logging.exception("portal-login session setup failed: %s", e)
         return redirect(PORTAL_URL or "/")
