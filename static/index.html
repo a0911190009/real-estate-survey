@@ -1215,7 +1215,7 @@
           _portalUrl = cfg.portal_url;
           window._portalUrl = cfg.portal_url;
           const pl = document.getElementById("portal-login-link");
-          if (pl) pl.href = cfg.portal_url;
+          if (pl) pl.href = cfg.portal_url.replace(/\/$/, "") + "/api/enter/survey";
           // 設定 Sidebar + Dropdown 的首頁/物件庫連結
           const libraryUrl = cfg.portal_url.replace(/\/$/, "") + "/api/enter/library";
           const plansUrl   = cfg.portal_url.replace(/\/$/, "") + "/plans";

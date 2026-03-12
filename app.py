@@ -72,8 +72,9 @@ _secret = os.environ.get("FLASK_SECRET_KEY", "")
 if not _secret and not os.environ.get("FLASK_DEBUG"):
     raise RuntimeError("FLASK_SECRET_KEY 未設定。生產環境必須設定此環境變數。")
 app.secret_key = _secret or "dev-only-insecure-key"
-app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
-app.config["SESSION_COOKIE_SECURE"] = not os.environ.get("FLASK_DEBUG")
+# SameSite=None：Portal 跨站跳轉後瀏覽器才能正確帶 session cookie
+app.config["SESSION_COOKIE_SAMESITE"] = "None"
+app.config["SESSION_COOKIE_SECURE"] = True
 
 GOOGLE_OAUTH_CLIENT_ID = os.environ.get("GOOGLE_OAUTH_CLIENT_ID", "")
 ADMIN_EMAILS = [e.strip() for e in (os.environ.get("ADMIN_EMAILS") or "").split(",") if e.strip()]
