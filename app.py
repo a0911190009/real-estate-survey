@@ -603,10 +603,10 @@ def auth_portal_return_token():
     return jsonify({"portal_url": PORTAL_URL})
 
 
-@app.route("/auth/portal-login")
+@app.route("/auth/portal-login", methods=["GET", "POST"])
 def auth_portal_login():
     """Accept a signed token from Portal and create a local session."""
-    token = request.args.get("token", "")
+    token = request.form.get("token") or request.args.get("token", "")
     if not token:
         return redirect(PORTAL_URL or "/")
     try:
