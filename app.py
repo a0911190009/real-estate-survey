@@ -647,6 +647,7 @@ def auth_portal_login():
 FEEDBACK_ADMIN_PAGE = """
 <!doctype html>
 <html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="icon" type="image/png" href="/static/favicon.png?v=2">
 <title>反饋管理 - Survey</title>
 <style>
   :root{--bg:#f5f5f7;--card:#fff;--border:#d2d2d7;--accent:#007aff;--danger:#ff3b30;--muted:#8e8e93;--text:#1d1d1f}
@@ -778,7 +779,7 @@ def view_shared(history_id):
 def admin_feedback():
     """反饋管理頁面（需管理員登入）"""
     if not session.get("user_email") or not _is_admin(session["user_email"]):
-        return render_template_string("""<!doctype html><html><head><meta charset="utf-8"><title>需要登入</title></head>
+        return render_template_string("""<!doctype html><html><head><meta charset="utf-8"><link rel="icon" type="image/png" href="/static/favicon.png?v=2"><title>需要登入</title></head>
         <body style="display:flex;justify-content:center;align-items:center;height:100vh;font-family:sans-serif;">
         <div style="text-align:center;"><h2>需要管理員登入</h2><a href="/">回首頁登入</a></div></body></html>""")
     return render_template_string(FEEDBACK_ADMIN_PAGE)
