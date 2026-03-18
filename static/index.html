@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <!-- favicon 已更新為透明版 -->
   <link rel="icon" type="image/png" href="/favicon.png?v=2">
-  <link rel="apple-touch-icon" href="/static/logo.png">
+  <link rel="apple-touch-icon" href="/logo.png">
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>地理設施調查 v3.7｜生活機能與嫌惡設施</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -895,16 +895,16 @@
   <!-- ── 桌機左側 Sidebar（80px icon-only，與 Portal 一致） ── -->
   <aside id="app-sidebar">
     <div class="sb-logo">
-      <img src="/static/logo.png" alt="U.P." onerror="this.style.display='none'" />
+      <img src="/logo.png" alt="U.P." onerror="this.style.display='none'" />
       <span>房仲 AI 工具</span>
     </div>
     <nav>
-      <a href="javascript:void(0)" id="sb-portal-home" class="hidden"><img src="/static/tool-reels.png" alt="" /><span class="sb-nav-text">工具首頁</span><span class="sb-tooltip">工具首頁</span></a>
-      <a href="javascript:void(0)" id="sb-ad" class="hidden"><img src="/static/tool-ad.png" alt="" /><span class="sb-nav-text">廣告文案</span><span class="sb-tooltip">廣告文案</span></a>
-      <a href="javascript:void(0)" id="sb-library" class="hidden"><img src="/static/tool-library.png" alt="" /><span class="sb-nav-text">物件庫</span><span class="sb-tooltip">物件庫</span></a>
-      <a href="javascript:void(0)" id="sb-buyer" class="hidden"><img src="/static/tool-buyer.png" alt="" /><span class="sb-nav-text">買方管理</span><span class="sb-tooltip">買方管理</span></a>
-      <a href="#" class="active"><img src="/static/tool-survey.png" alt="" /><span class="sb-nav-text">周邊調查</span><span class="sb-tooltip">周邊調查</span></a>
-      <a href="javascript:void(0)" id="sb-calendar" class="hidden"><img src="/static/tool-calendar.png" alt="" /><span class="sb-nav-text">業務行事曆</span><span class="sb-tooltip">業務行事曆</span></a>
+      <a href="javascript:void(0)" id="sb-portal-home" class="hidden"><img src="/tool-reels.png" alt="" /><span class="sb-nav-text">工具首頁</span><span class="sb-tooltip">工具首頁</span></a>
+      <a href="javascript:void(0)" id="sb-ad" class="hidden"><img src="/tool-ad.png" alt="" /><span class="sb-nav-text">廣告文案</span><span class="sb-tooltip">廣告文案</span></a>
+      <a href="javascript:void(0)" id="sb-library" class="hidden"><img src="/tool-library.png" alt="" /><span class="sb-nav-text">物件庫</span><span class="sb-tooltip">物件庫</span></a>
+      <a href="javascript:void(0)" id="sb-buyer" class="hidden"><img src="/tool-buyer.png" alt="" /><span class="sb-nav-text">買方管理</span><span class="sb-tooltip">買方管理</span></a>
+      <a href="#" class="active"><img src="/tool-survey.png" alt="" /><span class="sb-nav-text">周邊調查</span><span class="sb-tooltip">周邊調查</span></a>
+      <a href="javascript:void(0)" id="sb-calendar" class="hidden"><img src="/tool-calendar.png" alt="" /><span class="sb-nav-text">業務行事曆</span><span class="sb-tooltip">業務行事曆</span></a>
     </nav>
     <div class="sb-user">
       <!-- 桌機：只顯示頭像，文字隱藏 -->
@@ -922,7 +922,7 @@
   <!-- ── 手機頂部 Header ── -->
   <header id="app-header">
     <div class="hd-logo">
-      <img src="/static/logo.png" alt="U.P." onerror="this.style.display='none'" />
+      <img src="/logo.png" alt="U.P." onerror="this.style.display='none'" />
       <span>周邊調查</span>
     </div>
     <div class="hd-right" style="cursor:pointer;" onclick="toggleDropdown(event)">
@@ -3039,13 +3039,13 @@ function closeMoreMenu(){
   <div style="font-size:0.72rem;font-weight:700;color:var(--txm);margin-bottom:12px;text-transform:uppercase;letter-spacing:0.06em;">更多工具</div>
   <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;">
     <a id="more-survey" href="javascript:void(0)" onclick="closeMoreMenu()" style="display:flex;flex-direction:column;align-items:center;gap:4px;padding:10px 4px;border-radius:12px;background:var(--acs);text-decoration:none;color:var(--ac);">
-      <img src="/static/tool-survey.png" alt="" style="width:42px;height:42px;object-fit:contain;" /><span style="font-size:0.65rem;font-weight:600;">周邊調查</span>
+      <img src="/tool-survey.png" alt="" style="width:42px;height:42px;object-fit:contain;" /><span style="font-size:0.65rem;font-weight:600;">周邊調查</span>
     </a>
     <a id="more-calendar" href="javascript:void(0)" onclick="closeMoreMenu()" style="display:flex;flex-direction:column;align-items:center;gap:4px;padding:10px 4px;border-radius:12px;background:var(--bg-t,#f5f5f7);text-decoration:none;color:var(--tx);">
-      <img src="/static/tool-calendar.png" alt="" style="width:42px;height:42px;object-fit:contain;" /><span style="font-size:0.65rem;font-weight:600;">行事曆</span>
+      <img src="/tool-calendar.png" alt="" style="width:42px;height:42px;object-fit:contain;" /><span style="font-size:0.65rem;font-weight:600;">行事曆</span>
     </a>
     <a id="more-price" href="javascript:void(0)" onclick="closeMoreMenu()" style="display:flex;flex-direction:column;align-items:center;gap:4px;padding:10px 4px;border-radius:12px;background:var(--bg-t,#f5f5f7);text-decoration:none;color:var(--tx);">
-      <img src="/static/tool-price.png" alt="" style="width:42px;height:42px;object-fit:contain;" /><span style="font-size:0.65rem;font-weight:600;">實價登錄</span>
+      <img src="/tool-price.png" alt="" style="width:42px;height:42px;object-fit:contain;" /><span style="font-size:0.65rem;font-weight:600;">實價登錄</span>
     </a>
   </div>
 </div>
@@ -3054,16 +3054,16 @@ function closeMoreMenu(){
 <nav id="app-tab-bar" style="display:none;position:fixed;bottom:0;left:0;right:0;z-index:250;background:var(--bg-s);backdrop-filter:blur(12px);border-top:1px solid var(--bd);padding-bottom:env(safe-area-inset-bottom);transition:background 0.3s;">
   <div style="display:flex;align-items:center;padding:6px 0 4px;">
     <a id="sv-tb-home" href="javascript:void(0)" class="app-tb-item">
-      <img src="/static/tool-reels.png" alt="" style="width:30px;height:30px;object-fit:contain;" /><span>首頁</span>
+      <img src="/tool-reels.png" alt="" style="width:30px;height:30px;object-fit:contain;" /><span>首頁</span>
     </a>
     <a id="sv-tb-library" href="javascript:void(0)" class="app-tb-item">
-      <img src="/static/tool-library.png" alt="" style="width:30px;height:30px;object-fit:contain;" /><span>物件庫</span>
+      <img src="/tool-library.png" alt="" style="width:30px;height:30px;object-fit:contain;" /><span>物件庫</span>
     </a>
     <a id="sv-tb-ad" href="javascript:void(0)" class="app-tb-item">
-      <img src="/static/tool-ad.png" alt="" style="width:30px;height:30px;object-fit:contain;" /><span>廣告</span>
+      <img src="/tool-ad.png" alt="" style="width:30px;height:30px;object-fit:contain;" /><span>廣告</span>
     </a>
     <a id="sv-tb-buyer" href="javascript:void(0)" class="app-tb-item">
-      <img src="/static/tool-buyer.png" alt="" style="width:30px;height:30px;object-fit:contain;" /><span>買方</span>
+      <img src="/tool-buyer.png" alt="" style="width:30px;height:30px;object-fit:contain;" /><span>買方</span>
     </a>
     <button onclick="openMoreMenu()" class="app-tb-item" style="border:none;background:none;cursor:pointer;">
       <span style="font-size:1.4rem;line-height:1;">⋯</span><span>更多</span>
