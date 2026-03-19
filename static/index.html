@@ -3028,13 +3028,13 @@ function toggleMoreMenu(){
 }
 function closeMoreMenu(){ toggleMoreMenu(); }
 /* 手機才顯示底部 Tab Bar */
-(function(){
+document.addEventListener('DOMContentLoaded', function(){
   var tb=document.getElementById('app-tab-bar');
   if(!tb)return;
   function chk(){tb.style.display=window.innerWidth<=767?'block':'none';}
   chk();
   window.addEventListener('resize',chk);
-})();
+});
 </script>
 
 <!-- 更多選單遮罩 -->
