@@ -412,6 +412,7 @@
     }
 
     .global-feedback-btn {
+      display: none;
       position: fixed;
       bottom: 1.5rem;
       right: 1.5rem;
@@ -945,6 +946,7 @@
       <a id="dd-account" href="javascript:void(0)" class="hidden">👤 帳號管理</a>
       <a id="dd-admin" href="javascript:void(0)" class="hidden">🛡️ 後台管理</a>
       <button onclick="closeDropdown();document.getElementById('theme-panel').style.display='block';" style="display:flex;align-items:center;gap:10px;width:100%;padding:10px 16px;border:none;background:none;color:var(--txs);font-size:0.85rem;cursor:pointer;text-align:left;transition:background 0.15s;" onmouseover="this.style.background='var(--bg-h)';this.style.color='var(--tx)'" onmouseout="this.style.background='none';this.style.color='var(--txs)'">🎨 外觀設定</button>
+      <button onclick="closeDropdown();document.getElementById('gf-overlay').style.display='flex';" style="display:flex;align-items:center;gap:10px;width:100%;padding:10px 16px;border:none;background:none;color:var(--txs);font-size:0.85rem;cursor:pointer;text-align:left;transition:background 0.15s;" onmouseover="this.style.background='var(--bg-h)';this.style.color='var(--tx)'" onmouseout="this.style.background='none';this.style.color='var(--txs)'">💬 意見反饋</button>
     </div>
     <div class="dd-divider"></div>
     <div style="padding: 4px 0;">
