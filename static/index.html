@@ -1459,6 +1459,12 @@
     });
 
     googleStreet.addTo(map);
+
+    // 進入全螢幕後延遲呼叫 invalidateSize，確保地圖磚塊填滿新尺寸
+    map.on('enterFullscreen', function() {
+      setTimeout(function() { map.invalidateSize(); }, 200);
+    });
+
     const layerControl = L.control.layers({
       "🗺️ Google 街道": googleStreet,
       "🛰️ Google 衛星": googleSatellite,
