@@ -76,6 +76,25 @@
       font-size: 1rem;
     }
     input::placeholder { color: var(--muted); }
+    /* 地號查詢面板的下拉選單樣式 */
+    .land-panel select {
+      width: 100%;
+      padding: 0.6rem 0.75rem;
+      border: 1px solid var(--input-border);
+      border-radius: 6px;
+      background: var(--input-bg);
+      color: var(--text);
+      font-size: 1rem;
+    }
+    .land-panel select:disabled { opacity: 0.5; cursor: not-allowed; }
+    /* 地號查詢摺疊區塊標題 */
+    .land-toggle-btn {
+      display: flex; align-items: center; gap: 0.4rem;
+      background: none; border: none; color: var(--accent);
+      font-size: 0.88rem; cursor: pointer; padding: 0;
+      margin-top: 0.5rem; margin-bottom: 0;
+    }
+    .land-toggle-btn:hover { opacity: 0.75; }
     .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
     button {
       background: var(--accent);
@@ -1053,6 +1072,42 @@
           </div>
         </div>
 
+        <!-- 地號查詢：可展開的摺疊面板 -->
+        <button type="button" class="land-toggle-btn" id="land-toggle-btn"
+          onclick="toggleLandPanel()">▶ 以地號定位</button>
+        <div id="land-panel" class="land-panel" style="display:none; margin-top:0.75rem;">
+          <div class="row2" style="margin-bottom:0.5rem;">
+            <div>
+              <label style="font-size:0.82rem;color:var(--muted);">縣市</label>
+              <select id="land-city" onchange="onCityChange()">
+                <option value="">載入中…</option>
+              </select>
+            </div>
+            <div>
+              <label style="font-size:0.82rem;color:var(--muted);">鄉鎮市區</label>
+              <select id="land-town" onchange="onTownChange()" disabled>
+                <option value="">請先選縣市</option>
+              </select>
+            </div>
+          </div>
+          <div class="row2" style="margin-bottom:0.5rem;">
+            <div>
+              <label style="font-size:0.82rem;color:var(--muted);">段別</label>
+              <select id="land-section" disabled>
+                <option value="">請先選鄉鎮</option>
+              </select>
+            </div>
+            <div>
+              <label style="font-size:0.82rem;color:var(--muted);">地號（例：0100-0000）</label>
+              <input type="text" id="land-no" placeholder="主號-子號，或直接8碼" style="margin-top:0;" />
+            </div>
+          </div>
+          <button type="button" id="btn-land-locate"
+            style="margin-top:0; padding:0.6rem 1.2rem; font-size:0.9rem;"
+            onclick="locateLand()">地號定位</button>
+          <p id="land-error" style="color:var(--err);font-size:0.85rem;margin-top:0.4rem;"></p>
+        </div>
+
         <div id="map"></div>
         <p class="map-hint">點擊地圖可直接設定座標；輸入地址後按「定位」更新地圖</p>
 
@@ -1646,6 +1701,150 @@
     document.getElementById("address").addEventListener("keydown", function (e) {
       if (e.key === "Enter") { e.preventDefault(); locateAddress(); }
     });
+
+    // ── 地號查詢面板 ──────────────────────────────────────────────────────────
+
+    // 存放目前選到的段別資料（含 id, officeCode）
+    let _landSections = [];
+
+    // 展開 / 收合面板，展開時自動載入縣市
+    async function toggleLandPanel() {
+      const panel = document.getElementById("land-panel");
+      const btn = document.getElementById("land-toggle-btn");
+      const open = panel.style.display === "none";
+      panel.style.display = open ? "block" : "none";
+      btn.textContent = (open ? "▼" : "▶") + " 以地號定位";
+      if (open) {
+        await loadCities();
+      }
+    }
+
+    // 載入縣市清單
+    async function loadCities() {
+      const sel = document.getElementById("land-city");
+      sel.innerHTML = '<option value="">載入中…</option>';
+      sel.disabled = true;
+      try {
+        const res = await fetch("/api/easymap/cities");
+        const list = await res.json();
+        if (!res.ok || list.error) throw new Error(list.error || "失敗");
+        sel.innerHTML = '<option value="">請選縣市</option>';
+        list.forEach(c => {
+          const o = document.createElement("option");
+          o.value = c.id;
+          o.textContent = c.name;
+          sel.appendChild(o);
+        });
+        sel.disabled = false;
+      } catch (e) {
+        sel.innerHTML = '<option value="">載入失敗，請重試</option>';
+        sel.disabled = false;
+      }
+    }
+
+    // 縣市變更 → 載入鄉鎮
+    async function onCityChange() {
+      const cityCode = document.getElementById("land-city").value;
+      const townSel = document.getElementById("land-town");
+      const sectSel = document.getElementById("land-section");
+      // 重置鄉鎮與段別
+      townSel.innerHTML = '<option value="">載入中…</option>';
+      townSel.disabled = true;
+      sectSel.innerHTML = '<option value="">請先選鄉鎮</option>';
+      sectSel.disabled = true;
+      _landSections = [];
+      if (!cityCode) { townSel.innerHTML = '<option value="">請先選縣市</option>'; return; }
+      try {
+        const res = await fetch(`/api/easymap/towns?cityCode=${encodeURIComponent(cityCode)}`);
+        const list = await res.json();
+        if (!res.ok || list.error) throw new Error(list.error || "失敗");
+        townSel.innerHTML = '<option value="">請選鄉鎮市區</option>';
+        list.forEach(t => {
+          const o = document.createElement("option");
+          o.value = t.id;
+          o.textContent = t.name;
+          townSel.appendChild(o);
+        });
+        townSel.disabled = false;
+      } catch (e) {
+        townSel.innerHTML = '<option value="">載入失敗</option>';
+        townSel.disabled = false;
+      }
+    }
+
+    // 鄉鎮變更 → 載入段別
+    async function onTownChange() {
+      const cityCode = document.getElementById("land-city").value;
+      const townCode = document.getElementById("land-town").value;
+      const sectSel = document.getElementById("land-section");
+      sectSel.innerHTML = '<option value="">載入中…</option>';
+      sectSel.disabled = true;
+      _landSections = [];
+      if (!townCode) { sectSel.innerHTML = '<option value="">請先選鄉鎮</option>'; return; }
+      try {
+        const params = `cityCode=${encodeURIComponent(cityCode)}&townCode=${encodeURIComponent(townCode)}`;
+        const res = await fetch(`/api/easymap/sections?${params}`);
+        const list = await res.json();
+        if (!res.ok || list.error) throw new Error(list.error || "失敗");
+        _landSections = list;  // 存起來，定位時取 officeCode
+        sectSel.innerHTML = '<option value="">請選段別</option>';
+        list.forEach(s => {
+          const o = document.createElement("option");
+          o.value = s.id;
+          o.textContent = s.name;
+          sectSel.appendChild(o);
+        });
+        sectSel.disabled = false;
+      } catch (e) {
+        sectSel.innerHTML = '<option value="">載入失敗</option>';
+        sectSel.disabled = false;
+      }
+    }
+
+    // 按下「地號定位」按鈕
+    async function locateLand() {
+      const sectSel = document.getElementById("land-section");
+      const landNoInput = document.getElementById("land-no");
+      const landErrEl = document.getElementById("land-error");
+      const btnLand = document.getElementById("btn-land-locate");
+      landErrEl.textContent = "";
+
+      const sectNo = sectSel.value;
+      const landNo = landNoInput.value.trim();
+      if (!sectNo) { landErrEl.textContent = "請選擇段別"; return; }
+      if (!landNo) { landErrEl.textContent = "請輸入地號"; return; }
+
+      // 從已載入的段別清單找 officeCode
+      const sect = _landSections.find(s => s.id === sectNo);
+      const office = sect ? sect.officeCode : "";
+      if (!office) { landErrEl.textContent = "段別資料異常，請重新選取"; return; }
+
+      btnLand.disabled = true;
+      btnLand.textContent = "查詢中…";
+      try {
+        const res = await fetch("/api/easymap/locate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sectNo, office, landNo }),
+        });
+        const data = await res.json();
+        if (res.ok && data.lat != null && data.lng != null) {
+          // 成功：填入座標並更新地圖
+          document.getElementById("lat").value = data.lat.toFixed(6);
+          document.getElementById("lng").value = data.lng.toFixed(6);
+          syncLatLngDisplay();
+          updateMapMarker(data.lat, data.lng);
+          landErrEl.textContent = "";
+        } else {
+          landErrEl.textContent = data.error || "查無此地號";
+        }
+      } catch (_) {
+        landErrEl.textContent = "地號定位失敗，請檢查網路";
+      } finally {
+        btnLand.disabled = false;
+        btnLand.textContent = "地號定位";
+      }
+    }
 
     // ── Form logic ──
     const form = document.getElementById("form");

@@ -66,6 +66,7 @@ except Exception:
     pass
 
 from survey_v37 import run_survey, resolve_address, RADIUS_DEFAULT
+from easymap import EasymapCrawler
 
 app = Flask(__name__, static_folder="static", static_url_path="")
 _secret = os.environ.get("FLASK_SECRET_KEY", "")
@@ -950,6 +951,76 @@ def api_general_feedback():
     else:
         _atomic_write(GENERAL_FEEDBACK_FILE, data_str)
     return jsonify({"ok": True, "total": len(entries)})
+
+
+# ─── Easymap 地號查詢 API ───────────────────────────────────────────────────
+
+
+@app.route("/api/easymap/cities", methods=["GET"])
+@login_required
+def api_easymap_cities():
+    """取得所有縣市清單，供前端下拉選單使用"""
+    try:
+        crawler = EasymapCrawler()
+        cities = crawler.get_cities()
+        return jsonify(cities)
+    except Exception as e:
+        logging.error("Easymap cities 失敗: %s", e)
+        return jsonify({"error": "無法取得縣市清單，請稍後再試"}), 500
+
+
+@app.route("/api/easymap/towns", methods=["GET"])
+@login_required
+def api_easymap_towns():
+    """GET ?cityCode=10014 → 取得該縣市的鄉鎮清單"""
+    city_code = request.args.get("cityCode", "").strip()
+    if not city_code:
+        return jsonify({"error": "請提供 cityCode"}), 400
+    try:
+        crawler = EasymapCrawler()
+        towns = crawler.get_towns(city_code)
+        return jsonify(towns)
+    except Exception as e:
+        logging.error("Easymap towns 失敗: %s", e)
+        return jsonify({"error": "無法取得鄉鎮清單，請稍後再試"}), 500
+
+
+@app.route("/api/easymap/sections", methods=["GET"])
+@login_required
+def api_easymap_sections():
+    """GET ?cityCode=10014&townCode=... → 取得該鄉鎮的段別清單"""
+    city_code = request.args.get("cityCode", "").strip()
+    town_code = request.args.get("townCode", "").strip()
+    if not city_code or not town_code:
+        return jsonify({"error": "請提供 cityCode 與 townCode"}), 400
+    try:
+        crawler = EasymapCrawler()
+        sections = crawler.get_sections(city_code, town_code)
+        return jsonify(sections)
+    except Exception as e:
+        logging.error("Easymap sections 失敗: %s", e)
+        return jsonify({"error": "無法取得段別清單，請稍後再試"}), 500
+
+
+@app.route("/api/easymap/locate", methods=["POST"])
+@login_required
+def api_easymap_locate():
+    """POST { sectNo, office, landNo } → { lat, lng }"""
+    data = request.get_json() or {}
+    sect_no = (data.get("sectNo") or "").strip()
+    office = (data.get("office") or "").strip()
+    land_no = (data.get("landNo") or "").strip()
+    if not sect_no or not office or not land_no:
+        return jsonify({"error": "請提供 sectNo、office 與 landNo"}), 400
+    try:
+        crawler = EasymapCrawler()
+        coords = crawler.locate(sect_no, office, land_no)
+        if coords:
+            return jsonify({"success": True, "lat": coords["lat"], "lng": coords["lng"]})
+        return jsonify({"error": "查無此地號，請確認地號是否正確"}), 404
+    except Exception as e:
+        logging.error("Easymap locate 失敗: %s", e)
+        return jsonify({"error": "地號查詢失敗，請稍後再試"}), 500
 
 
 @app.route("/api/resolve-address", methods=["POST"])
