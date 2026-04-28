@@ -120,7 +120,10 @@ def api_config():
 
 @app.route("/api/debug")
 def api_debug():
-    """除錯端點：在瀏覽器打開 /api/debug 就能看到系統狀態"""
+    """除錯端點：在瀏覽器打開 /api/debug 就能看到系統狀態（僅管理員）"""
+    email = session.get("user_email", "")
+    if not _is_admin(email):
+        return jsonify({"error": "僅管理員可存取"}), 403
     from survey_v37 import _get_all_api_keys, _find_working_key, _working_key
 
     keys = _get_all_api_keys()
@@ -848,12 +851,16 @@ def api_theme_set():
 
 @app.route("/api/feedback", methods=["GET"])
 def api_feedback_get():
+    if not session.get("user_email"):
+        return jsonify({"error": "請先登入"}), 401
     return jsonify(_load_feedback())
 
 
 @app.route("/api/feedback", methods=["POST"])
 def api_feedback_post():
     """設施反饋（含意見文字、嚴重度調整）"""
+    if not session.get("user_email"):
+        return jsonify({"error": "請先登入"}), 401
     data = request.get_json() or {}
     place_id = data.get("place_id", "").strip()
     action = data.get("action", "").strip()
@@ -928,12 +935,16 @@ def _load_general_feedback():
 @app.route("/api/general-feedback", methods=["GET"])
 def api_general_feedback_get():
     """列出所有通用意見"""
+    if not session.get("user_email"):
+        return jsonify({"error": "請先登入"}), 401
     return jsonify(_load_general_feedback())
 
 
 @app.route("/api/general-feedback", methods=["POST"])
 def api_general_feedback():
     """通用意見反饋"""
+    if not session.get("user_email"):
+        return jsonify({"error": "請先登入"}), 401
     data = request.get_json() or {}
     text = (data.get("text") or "").strip()
     if not text:
