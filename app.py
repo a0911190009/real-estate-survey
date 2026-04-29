@@ -1114,6 +1114,8 @@ def api_search():
             user["usage"] = usage
             _save_user(user)
 
+        # 記錄調查報告成功產出
+        log_event("survey_complete", user_id=email, detail={"address": address_display[:50]})
         return jsonify(result)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
