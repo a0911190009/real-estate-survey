@@ -96,6 +96,25 @@ TOKEN_SERIALIZER = URLSafeTimedSerializer(app.secret_key)
 TOKEN_MAX_AGE = 300  # 5 分鐘，容忍 Cloud Run cold start
 
 
+# ── LOG 工具函式 ──
+def log_event(event_type, user_id="", detail=None):
+    """記錄業務事件，輸出至 Cloud Logging（Cloud Run stdout 自動收集）。"""
+    print(json.dumps({
+        "time": datetime.now(timezone.utc).isoformat(),
+        "event": event_type,   # 事件名稱，例如 "survey_search"
+        "user": user_id,
+        "detail": detail or {}
+    }, ensure_ascii=False), flush=True)
+
+
+@app.route("/api/client-log", methods=["POST"])
+def api_client_log():
+    """接收前端 JS 錯誤，記錄至 Cloud Logging。"""
+    data = request.get_json(silent=True) or {}
+    log_event("client_error", detail=data)
+    return jsonify({"ok": True})
+
+
 @app.route("/health")
 def health_check():
     status = {"service": "survey", "status": "ok", "gcs": bool(GCS_BUCKET)}
@@ -1070,6 +1089,7 @@ def api_search():
     lng = data.get("lng")
     radius_m = data.get("radius_m") or RADIUS_DEFAULT
     address_display = (data.get("address_display") or "").strip()
+    log_event("survey_search", user_id=email, detail={"lat": lat, "lng": lng, "address": address_display})
 
     if lat is None or lng is None:
         return jsonify({"error": "請提供 lat + lng（請先在地圖上設定座標）"}), 400
