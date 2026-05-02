@@ -69,6 +69,10 @@ from survey_v37 import run_survey, resolve_address, RADIUS_DEFAULT
 from easymap import EasymapCrawler
 
 app = Flask(__name__, static_folder="static", static_url_path="")
+
+# 跨工具回饋系統（survey 既有 /api/feedback 是其他用途，故 endpoint 改用 /api/improvement-feedback）
+from feedback_endpoint import bp as _feedback_bp
+app.register_blueprint(_feedback_bp)
 _secret = os.environ.get("FLASK_SECRET_KEY", "")
 if not _secret and not os.environ.get("FLASK_DEBUG"):
     raise RuntimeError("FLASK_SECRET_KEY 未設定。生產環境必須設定此環境變數。")
@@ -795,7 +799,11 @@ function renderGeneral(gf) {
 }
 
 loadAll();
-</script></body></html>
+</script>
+<link rel="stylesheet" href="https://real-estate-portal-334765337861.asia-east1.run.app/static/feedback-widget.css">
+<script src="https://real-estate-portal-334765337861.asia-east1.run.app/static/feedback-widget.js"></script>
+<script>FeedbackWidget.init({ tool: 'survey', endpoint: '/api/improvement-feedback' });</script>
+</body></html>
 """
 
 
